@@ -493,7 +493,7 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: dbCheck ? 'ok' : 'error',
       timestamp: new Date().toISOString(), 
-      version: '3.9.50',
+      version: '3.9.52',
       uptime: Math.round(process.uptime()),
       dbLatency,
       env: {
