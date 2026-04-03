@@ -908,6 +908,14 @@ function showDashFilteredCustomers(status, source) {
 }
 
 // ── Companies ──
+function channelLabels(c) {
+  const labels = [];
+  if (c.feature_phone !== false) labels.push('telefon-kunde');
+  if (c.feature_chatbot !== false) labels.push('chatbot-kunde');
+  if (c.feature_inbound_sms === true) labels.push('melding-kunde');
+  return labels.length ? ' <span style="font-size:.6rem; color:#94a3b8; font-weight:400;">(' + labels.join(', ') + ')</span>' : '';
+}
+
 async function renderCompanies() {
   // For company login: redirect to their own company detail
   if (!isAdmin && currentCompanyId) {
@@ -927,7 +935,7 @@ async function renderCompanies() {
         <div style="display:flex; align-items:center; gap:.75rem;">
           ${c.logo_url ? `<img src="${c.logo_url}" alt="" style="width:88px; height:88px; border-radius:.75rem; object-fit:contain; background:#1e293b; border:1px solid #334155; padding:4px; flex-shrink:0;">` : `<div style="width:88px; height:88px; border-radius:.75rem; background:#1e293b; border:1px solid #334155; display:flex; align-items:center; justify-content:center; font-size:2.5rem; flex-shrink:0;">${INDUSTRIES.find(i=>i.value===c.industry)?.icon||'🏢'}</div>`}
           <div style="flex:1; min-width:0;">
-            <h3 style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.name}</h3>
+            <h3 style="font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${c.name}${channelLabels(c)}</h3>
             <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">${INDUSTRIES.find(i=>i.value===c.industry)?.label || c.industry || '–'}</p>
           </div>
         </div>
@@ -1000,7 +1008,7 @@ async function renderCompanyDetail(id) {
         <div style="display:flex; align-items:center; gap:1.25rem; min-width:0; flex:1;">
           ${c.logo_url ? `<img src="${c.logo_url}" alt="Logo" style="width:240px; height:240px; border-radius:1rem; object-fit:contain; background:#0f172a; border:2px solid #475569; padding:12px; flex-shrink:0; cursor:pointer;" onclick="window.open(this.src)">` : `<div style="width:240px; height:240px; border-radius:1rem; background:#0f172a; border:2px dashed #475569; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span style="font-size:5rem;">${industryIcon}</span></div>`}
           <div style="min-width:0;">
-            <h2 style="font-size:1.75rem; font-weight:800; color:#f1f5f9; letter-spacing:-.02em; word-wrap:break-word; overflow-wrap:break-word;">${c.name}</h2>
+            <h2 style="font-size:1.75rem; font-weight:800; color:#f1f5f9; letter-spacing:-.02em; word-wrap:break-word; overflow-wrap:break-word;">${c.name}${channelLabels(c)}</h2>
             <div style="display:flex; align-items:center; gap:.5rem; margin-top:.35rem;">
               <span style="font-size:.9rem; color:#94a3b8; font-weight:500;">${ind?.label || c.industry || '–'}</span>
               <span style="font-size:.8rem; margin-left:.25rem;">📞</span><span style="font-size:.8rem;">📅</span><span style="font-size:.8rem;">🔔</span>
@@ -1019,6 +1027,11 @@ async function renderCompanyDetail(id) {
         </div>
       </div>
 
+      <!-- Master-master: Automatiske meldinger -->
+      <div style="margin-bottom:.5rem;">
+        <button onclick="toggleAutoMessages(${c.id},this)" class="btn" style="width:100%; font-size:1rem; padding:.75rem 1.2rem; border-radius:.6rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'}; background:${c.feature_auto_messages !== false ? '#7c3aed22' : '#ef444422'}; color:${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'};">📨 Automatiske meldinger ${c.feature_auto_messages !== false ? 'PÅ' : 'AV'} <span style="font-size:.75rem; font-weight:400; opacity:.7;">(master)</span></button>
+        <p style="font-size:.65rem; color:#94a3b8; margin-top:.25rem; text-align:center;">${c.feature_auto_messages !== false ? 'Meldinger sendes ut automatisk etter samtaler' : 'Hver melding må bekreftes manuelt'}</p>
+      </div>
       <!-- Feature toggles — 3 grupper: INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
         <!-- INFO INN -->
@@ -1570,9 +1583,10 @@ const FEAT_LABELS = {
   feature_phone: '📞 Telefon', feature_chatbot: '💬 Chatbot',
   feature_inbound_sms: '📥 Kundemeldinger til bedriftsnr.',
   feature_employee_alert: '📋 Ansattvarsling', feature_auto_confirm: '📨 Auto-bekreftelse',
+  feature_auto_messages: '📨 Automatiske meldinger',
   feature_customer_confirm: '✅ Kundebekreftelse', feature_reminder: '⏰ Påminnelse',
   feature_info_in: '📥 INFO INN', feature_info_out: '📤 INFO UT',
-  feature_base44: '🌐 Base44', feature_auto_confirm: '📨 Auto-bekreftelse'
+  feature_base44: '🌐 Base44', feature_auto_confirm: '📨 Auto-bekreftelse',
 };
 
 const INFO_IN_SUBS = ['feature_phone','feature_chatbot','feature_inbound_sms'];
@@ -1594,6 +1608,27 @@ async function toggleFeature(companyId, featureName, btn) {
   } catch(e) {
     showToast('❌ Kunne ikke endre feature: ' + e.message);
   }
+}
+
+async function toggleAutoMessages(companyId, btn) {
+  const isOn = btn.dataset.on === 'true';
+  const newVal = !isOn;
+  try {
+    const res = await fetch('/api/companies/' + companyId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feature_auto_messages: newVal })
+    });
+    if (!res.ok) throw new Error('Feilet');
+    btn.dataset.on = String(newVal);
+    btn.style.borderColor = newVal ? '#a78bfa' : '#ef4444';
+    btn.style.background = newVal ? '#7c3aed22' : '#ef444422';
+    btn.style.color = newVal ? '#a78bfa' : '#ef4444';
+    btn.innerHTML = '📨 Automatiske meldinger ' + (newVal ? 'PÅ' : 'AV') + ' <span style="font-size:.75rem; font-weight:400; opacity:.7;">(master)</span>';
+    // Update description
+    const desc = btn.parentElement.querySelector('p');
+    if (desc) desc.textContent = newVal ? 'Meldinger sendes ut automatisk etter samtaler' : 'Hver melding må bekreftes manuelt';
+  } catch(e) { alert('Feil: ' + e.message); }
 }
 
 async function toggleMasterFeature(companyId, featureName, btn, groupPrefix) {
@@ -2315,6 +2350,14 @@ function openNewCompanyModal() {
       </div>
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Telefonnummer (kundetelefon)</label><input id="nc-phone2"></div>
       <div><label id="nc-worker-label" style="font-size:.875rem; font-weight:500; color:var(--text2);">Ansatt-telefon</label><input id="nc-montour-phone" placeholder="Telefonnummer"></div>
+      <!-- Master: Automatiske meldinger -->
+      <div style="padding:.75rem; background:#7c3aed15; border:1px solid #a78bfa40; border-radius:.5rem;">
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+          <input type="checkbox" id="nc-auto-messages" checked style="width:1.2rem; height:1.2rem;" onchange="toggleNcAutoMessages(this.checked)">
+          <span style="font-size:.95rem; font-weight:700; color:#a78bfa;">📨 Automatiske meldinger</span>
+        </label>
+        <p style="font-size:.7rem; color:#94a3b8; margin-top:.25rem; margin-left:1.7rem;">Meldinger sendes ut automatisk etter samtaler. Kan justeres senere per kanal.</p>
+      </div>
       <!-- INFO INN -->
       <div style="padding:.75rem; background:#0f4a2e30; border:1px solid #22c55e40; border-radius:.5rem;">
         <p style="font-size:.75rem; color:#4ade80; font-weight:700; margin-bottom:.5rem;">📥 INFO INN</p>
@@ -2468,6 +2511,15 @@ function clearEditLogo() {
   if (drop) drop.innerHTML = `<span style="color:var(--text3); font-size:.6rem; text-align:center;">📷 Logo</span>`;
 }
 
+function toggleNcAutoMessages(checked) {
+  // When unchecked, all INFO UT toggles stay as-is but user knows they need manual confirm
+  // Visual hint: dim the INFO UT section
+  const infoUtSection = document.querySelector('#nc-sms-notify')?.closest('[style*="background:#1e3a5f"]');
+  if (infoUtSection) {
+    infoUtSection.style.opacity = checked ? '1' : '.6';
+  }
+}
+
 function generatePassword() {
   const words = ['fjord','bjørk','sol','gran','storm','fjell','skog','elv','bris','regn','snø','stein','dal','hav','nord','sør','vind','kveld','morgen','blomst','foss','strand','himmel','lyng','bjørn','ulv','ørn','laks','bre','topp','ild','frost','sky','bekk','eng','ås','myr','bukt','vik','sund','tind','li','haug','mo','vann','berg','kyst','gård','hei','rein'];
   const w1 = words[Math.floor(Math.random()*words.length)];
@@ -2500,6 +2552,7 @@ async function createCompany() {
     feature_customer_confirm: $('nc-sms-customer')?.checked ?? true,
     feature_reminder: $('nc-sms-reminder')?.checked ?? true,
     feature_base44: $('nc-feat-base44')?.checked ?? true,
+    feature_auto_messages: $('nc-auto-messages')?.checked ?? true,
     feature_info_in: true,
     feature_info_out: true,
     feature_calendar: true,

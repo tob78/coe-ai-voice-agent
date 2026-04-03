@@ -1876,8 +1876,8 @@ app.post('/api/companies', async (req, res) => {
     const generated = autoCompany.generateCompanyConfig(name, safeIndustry);
     
     const result = await db.run(
-      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval, feature_auto_messages, feature_info_in, feature_info_out, feature_phone, feature_chatbot, feature_auto_confirm, feature_employee_alert, feature_customer_confirm, feature_reminder)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id`,
       name.trim(), safeIndustry, phone || null, autoGreeting, montour_phone || null, autoPassword, boss_phone || null, boss_email || null,
       sms_notify_worker !== false, sms_confirm_customer !== false, sms_remind_customer !== false, sms_extract_employee !== false,
       JSON.stringify(generated.industryQuestions || []),
@@ -1885,7 +1885,16 @@ app.post('/api/companies', async (req, res) => {
       JSON.stringify(generated.standardRoutines || []),
       generated.smsTemplate || null,
       logo_url || null,
-      requires_worker_approval === true
+      requires_worker_approval === true,
+      req.body.feature_auto_messages !== false,
+      req.body.feature_info_in !== false,
+      req.body.feature_info_out !== false,
+      req.body.feature_phone !== false,
+      req.body.feature_chatbot !== false,
+      req.body.feature_auto_confirm !== false,
+      req.body.feature_employee_alert !== false,
+      req.body.feature_customer_confirm !== false,
+      req.body.feature_reminder !== false
     );
     
     res.json({ 
