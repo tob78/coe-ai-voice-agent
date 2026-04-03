@@ -1895,11 +1895,13 @@ app.post('/api/companies', async (req, res) => {
 
 // Generate random password
 function generatePassword() {
-  const words = ['sol','fjell','fjord','skog','strand','nord','is','bre','elv','dal','lyn','storm','bjørk','gran','furu'];
-  const w1 = words[Math.floor(Math.random()*words.length)];
-  const w2 = words[Math.floor(Math.random()*words.length)];
-  const num = Math.floor(Math.random()*900)+100;
-  return w1 + w2 + num;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const specials = '!#@$';
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[Math.floor(Math.random()*chars.length)];
+  pw += specials[Math.floor(Math.random()*specials.length)];
+  pw += Math.floor(Math.random()*90+10);
+  return pw;
 }
 
 // Update company
