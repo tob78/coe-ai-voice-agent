@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.59 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.62 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();

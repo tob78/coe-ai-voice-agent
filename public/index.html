@@ -436,7 +436,7 @@ function isLoggedIn() {
 }
 
 // Lockout handled server-side (2 attempts, permanent lock)
-const _loginState = { locked: false };
+const _loginState = { locked: false, attempts: 0 };
 
 async function doLogin() {
   const password = document.getElementById('login-password').value;
@@ -947,15 +947,7 @@ async function renderCompanies() {
             <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">${INDUSTRIES.find(i=>i.value===c.industry)?.label || c.industry || '–'}</p>
           </div>
         </div>
-        <div class="phone-highlight" style="margin-top:.75rem;">
-          <div style="display:flex; align-items:center; gap:.5rem;">
-            <span style="font-size:1.25rem;">📞</span>
-            <div>
-              <p style="font-weight:600; color:#60a5fa; font-size:.875rem;">${fmtPhone(c.phone) || 'Ikke satt'}</p>
-              <p style="font-size:.7rem; color:#3b82f6;">Kundenummer (videresending hit)</p>
-            </div>
-          </div>
-        </div>
+        
         ${(c.boss_phone || c.boss_email) ? `<div style="margin-top:.5rem; font-size:.8rem; color:var(--text2);">
           ${c.boss_phone ? `<div>👔 Sjef: ${fmtPhone(c.boss_phone)}</div>` : ''}
           ${c.boss_email ? `<div>📧 ${c.boss_email}</div>` : ''}
@@ -987,6 +979,7 @@ async function renderCompanyDetail(id) {
   app().innerHTML = `<div id="company-detail">${spinner()}</div>`;
   try {
     const c = await api(`/api/companies/${id}`);
+    window.currentCompanyData = c;
     const ind = INDUSTRIES.find(i => i.value === c.industry);
 
     // Fetch customers for this company
@@ -1035,15 +1028,27 @@ async function renderCompanyDetail(id) {
         </div>
       </div>
 
-      <!-- Master-master: Automatiske meldinger -->
-      <div style="margin-bottom:.5rem;">
-        <button onclick="toggleAutoMessages(${c.id},this)" class="btn" style="width:100%; font-size:1rem; padding:.75rem 1.2rem; border-radius:.6rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'}; background:${c.feature_auto_messages !== false ? '#7c3aed22' : '#ef444422'}; color:${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'};">📨 Automatiske meldinger ${c.feature_auto_messages !== false ? 'PÅ' : 'AV'} <span style="font-size:.75rem; font-weight:400; opacity:.7;">(master)</span></button>
-        <p style="font-size:.65rem; color:#94a3b8; margin-top:.25rem; text-align:center;">${c.feature_auto_messages !== false ? 'Meldinger sendes ut automatisk etter samtaler' : 'Hver melding må bekreftes manuelt'}</p>
+      <!-- Phone highlight — øverst -->
+      <div class="phone-highlight" style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:.75rem;">
+          <span style="font-size:1.5rem;">📞</span>
+          <div>
+            <p style="font-weight:700; color:#60a5fa; font-size:1.1rem;">${fmtPhone(c.phone) || 'Ikke satt'}</p>
+            <p style="font-size:.8rem; color:#3b82f6; font-weight:500;">Kundenummer (videresending hit)</p>
+            <p style="font-size:.65rem; color:#64748b; margin-top:.15rem;">Videresendes til: +1 260 261 2731 (Twilio)</p>
+          </div>
+        </div>
       </div>
-      <!-- Feature toggles — 3 grupper: INFO INN, INFO UT, Base44 -->
+
+      ${(c.boss_phone || c.boss_email) ? \`<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; font-size:.875rem;">
+        <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens telefon:</span> <strong>${fmtPhone(c.boss_phone)}</strong></div>
+        <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
+      </div>\` : ''}
+
+      <!-- Feature toggles — INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
         <!-- INFO INN -->
-        <div style="" id="info-in-wrap-${c.id}">
+        <div id="info-in-wrap-${c.id}">
           <div style="display:flex; align-items:center; gap:.35rem;">
             <button onclick="toggleMasterFeature(${c.id},'feature_info_in',this,'info-in')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_in !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_in !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_in !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_in" data-on="${c.feature_info_in !== false}">📥 INFO INN ${c.feature_info_in !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleDropdown('info-in-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
@@ -1052,17 +1057,20 @@ async function renderCompanyDetail(id) {
             <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Innkommende kanaler</div>
             <button onclick="toggleFeature(${c.id},'feature_phone',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_phone !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_phone !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_phone !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_phone" data-on="${c.feature_phone !== false}">📞 Telefon ${c.feature_phone !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_chatbot',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_chatbot !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_chatbot" data-on="${c.feature_chatbot !== false}">💬 Chatbot ${c.feature_chatbot !== false ? 'PÅ' : 'AV'}</button>
-            <button onclick="toggleFeature(${c.id},'feature_inbound_sms',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'}; background:${c.feature_inbound_sms === true ? '#16a34a22' : '#ef444422'}; color:${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'};" data-feat="feature_inbound_sms" data-on="${c.feature_inbound_sms === true}">📥 Kundemeldinger til bedriftsnr. ${c.feature_inbound_sms === true ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_inbound_sms',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'}; background:${c.feature_inbound_sms === true ? '#16a34a22' : '#ef444422'}; color:${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'};" data-feat="feature_inbound_sms" data-on="${c.feature_inbound_sms === true}">📥 Kundemeldinger inn ${c.feature_inbound_sms === true ? 'PÅ' : 'AV'}</button>
           </div>
         </div>
         <!-- INFO UT -->
-        <div style="" id="info-out-wrap-${c.id}">
+        <div id="info-out-wrap-${c.id}">
           <div style="display:flex; align-items:center; gap:.35rem;">
             <button onclick="toggleMasterFeature(${c.id},'feature_info_out',this,'info-out')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_out !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_out !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_out !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_out" data-on="${c.feature_info_out !== false}">📤 INFO UT ${c.feature_info_out !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleDropdown('info-out-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
           </div>
           <div id="info-out-sub-${c.id}" style="display:none; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem;">
             <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Utgående meldinger</div>
+            <button onclick="toggleAutoMessages(${c.id},this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.85rem; padding:.6rem .75rem; margin-bottom:.5rem; border-radius:.4rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'}; background:${c.feature_auto_messages !== false ? '#7c3aed22' : '#ef444422'}; color:${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'};" data-feat="feature_auto_messages" data-on="${c.feature_auto_messages !== false}">📨 Automatiske meldinger ${c.feature_auto_messages !== false ? 'PÅ' : 'AV'}</button>
+            <p style="font-size:.6rem; color:#94a3b8; margin-bottom:.5rem; padding:0 .75rem;">${c.feature_auto_messages !== false ? 'Alle 4 meldinger sendes automatisk' : 'Hver melding må bekreftes manuelt'}</p>
+            <hr style="border:none; border-top:1px solid #334155; margin-bottom:.5rem;">
             <button onclick="toggleFeature(${c.id},'feature_employee_alert',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_employee_alert !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_employee_alert" data-on="${c.feature_employee_alert !== false}">📋 Ansattvarsling ${c.feature_employee_alert !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_auto_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_auto_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_auto_confirm" data-on="${c.feature_auto_confirm !== false}">📨 Auto-bekreftelse ${c.feature_auto_confirm !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_customer_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_customer_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_customer_confirm" data-on="${c.feature_customer_confirm !== false}">✅ Kundebekreftelse ${c.feature_customer_confirm !== false ? 'PÅ' : 'AV'}</button>
@@ -1072,21 +1080,6 @@ async function renderCompanyDetail(id) {
         <!-- Base44 -->
         <button onclick="toggleFeature(${c.id},'feature_base44',this)" class="btn" style="font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_base44 !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_base44 !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_base44 !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_base44" data-on="${c.feature_base44 !== false}">🌐 Base44 ${c.feature_base44 !== false ? 'PÅ' : 'AV'}</button>
       </div>
-
-      <div class="phone-highlight" style="margin-bottom:1.5rem;">
-        <div style="display:flex; align-items:center; gap:.75rem;">
-          <span style="font-size:1.5rem;">📞</span>
-          <div>
-            <p style="font-weight:700; color:#60a5fa;">${fmtPhone(c.phone) || 'Ikke satt'}</p>
-            <p style="font-size:.875rem; color:#3b82f6; font-weight:500;">Kundenummer (videresending hit)</p>
-          </div>
-        </div>
-      </div>
-
-      ${(c.boss_phone || c.boss_email) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; font-size:.875rem;">
-        <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens telefon:</span> <strong>${fmtPhone(c.boss_phone)}</strong></div>
-        <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
-      </div>` : ''}
 
       <!-- 1. Pending -->
       <div id="cd-pending" style="margin-bottom:1rem;"></div>
@@ -1504,6 +1497,11 @@ function toggleHidden(id, btn, total, label) {
 // ── Pending Approvals ──
 async function loadPendingApprovals(companyId, industry) {
   const el = $('cd-pending');
+  // Hide pending section if auto_messages is ON (all confirmed automatically)
+  if (currentCompanyData && currentCompanyData.feature_auto_messages !== false) {
+    if (el) el.innerHTML = '';
+    return;
+  }
   if (!el) return;
   try {
     const pending = await api(`/api/companies/${companyId}/pending`);
@@ -1623,7 +1621,15 @@ async function toggleAutoMessages(companyId, btn) {
     btn.style.borderColor = newVal ? '#a78bfa' : '#ef4444';
     btn.style.background = newVal ? '#7c3aed22' : '#ef444422';
     btn.style.color = newVal ? '#a78bfa' : '#ef4444';
-    btn.innerHTML = '📨 Automatiske meldinger ' + (newVal ? 'PÅ' : 'AV') + ' <span style="font-size:.75rem; font-weight:400; opacity:.7;">(master)</span>';
+    btn.textContent = '📨 Automatiske meldinger ' + (newVal ? 'PÅ' : 'AV');
+    btn.style.borderColor = newVal ? '#a78bfa' : '#ef4444';
+    btn.style.background = newVal ? '#7c3aed22' : '#ef444422';
+    btn.style.color = newVal ? '#a78bfa' : '#ef4444';
+    // Update description text
+    const desc = btn.nextElementSibling;
+    if (desc && desc.tagName === 'P') desc.textContent = newVal ? 'Alle 4 meldinger sendes automatisk etter samtale' : 'Hver melding må bekreftes manuelt';
+    // Re-render pending section (hide/show based on auto_messages)
+    if (currentCompanyData) { currentCompanyData.feature_auto_messages = newVal; renderPendingBookings(companyId); }
     // Update description
     const desc = btn.parentElement.querySelector('p');
     if (desc) desc.textContent = newVal ? 'Meldinger sendes ut automatisk etter samtaler' : 'Hver melding må bekreftes manuelt';
