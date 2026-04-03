@@ -1,0 +1,328 @@
+// ===== AI CONVERSATION ENGINE =====
+// Handles AI logic for customer calls using OpenAI
+
+const OpenAI = require('openai');
+let autoLearner = null;
+try { autoLearner = require('./auto-learner'); } catch(e) { console.log('Auto-learner not available'); }
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ===== Industry-specific question sets =====
+const INDUSTRY_QUESTIONS = {
+  planke: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'materiale', question: 'Hvilket materiale ønsker du? For eksempel eik, ask, furu...' },
+    { field: 'leveringstid', question: 'Når trenger du levering?' },
+    { field: 'areal', question: 'Omtrent hvor stort areal gjelder det, i kvadratmeter?' },
+  ],
+  vaskeri: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'tekstiler', question: 'Hva slags tekstiler ønsker du vasket?' },
+    { field: 'mengde', question: 'Hvor stor mengde er det snakk om?' },
+    { field: 'spesielle_onsker', question: 'Har du noen spesielle ønsker for vasken?' },
+  ],
+  kosmetikk: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'behandling', question: 'Hvilken behandling er du interessert i?' },
+    { field: 'hudtype', question: 'Hva slags hudtype har du?' },
+    { field: 'allergier', question: 'Har du noen kjente allergier vi bør vite om?' },
+  ],
+  rorlegging: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'type_arbeid', question: 'Hva slags arbeid trengs? Rørlegger, baderom, kjøkken, avløp?' },
+    { field: 'omfang', question: 'Hvor stort omfang er det? Lite vedlikehold eller større renovering?' },
+    { field: 'akutt', question: 'Er det akutt, eller kan det planlegges?' },
+  ],
+  elektriker: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'type_arbeid', question: 'Hva slags elektrisk arbeid trengs?' },
+    { field: 'omfang', question: 'Er det en liten jobb eller et større prosjekt?' },
+  ],
+  maler: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'overflate', question: 'Hva slags overflate skal males? Vegg, tak, fasade, møbler?' },
+    { field: 'areal', question: 'Omtrent hvor stort areal gjelder det?' },
+  ],
+  antikviteter: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'type_gjenstand', question: 'Hva slags gjenstand gjelder det? Møbel, smykke, kunst, porselen, ur, eller annet?' },
+    { field: 'alder_opphav', question: 'Vet du omtrent hvor gammelt det er, eller hvor det kommer fra?' },
+    { field: 'tilstand', question: 'Hvordan er tilstanden? Original, restaurert, eller trenger reparasjon?' },
+    { field: 'onsker', question: 'Vil du selge, kjøpe, få verdivurdering, eller restaurering?' },
+  ],
+  frisor: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+    { field: 'tjeneste', question: 'Hvilken tjeneste ønsker du? Klipp, farge, styling, behandling?' },
+    { field: 'haartype', question: 'Kan du fortelle litt om håret ditt? Langt, kort, tykt, tynt?' },
+    { field: 'andre_tjenester', question: 'Ønsker du andre tjenester i tillegg? Vask, kur, styling?' },
+  ],
+  generell: [
+    { field: 'problem', question: 'Hva er problemet eller behovet ditt? Fortell gjerne litt om situasjonen.' },
+  ],
+};
+
+// ===== Required base fields =====
+const REQUIRED_FIELDS = ['navn', 'adresse', 'telefon', 'dato', 'klokkeslett'];
+
+// ===== Build system prompt for the AI =====
+function buildSystemPrompt(company, collectedData, industry, activeImprovements) {
+  const industryQuestions = INDUSTRY_QUESTIONS[industry] || [];
+  const otherIndustryQuestions = industryQuestions.filter(q => q.field !== 'problem');
+  const missingBase = REQUIRED_FIELDS.filter(f => !collectedData[f]);
+  const missingIndustry = industryQuestions.filter(q => !collectedData[q.field]);
+  const hasProblem = !!collectedData['problem'];
+
+  return `Du er en vennlig og profesjonell KI-stemmeassistent for ${company.name}. Du hjelper kunder på telefon.
+
+VIKTIG: DU ER EN SAMTALEPARTNER — IKKE ET SKJEMA!
+Du skal føre en naturlig samtale, ikke stille robotiske spørsmål ett etter ett.
+Når kunden forteller noe, LYTT og REAGER på det de sier — still naturlige oppfølgingsspørsmål.
+Trekk ut informasjon fra det kunden sier naturlig i samtalen, i stedet for å spørre direkte.
+
+Eksempel på DÅRLIG samtale (robotisk):
+Kunde: "Hei, gulvet mitt er ødelagt"
+AI: "Hva er navnet ditt?"
+Kunde: "Ola Nordmann"
+AI: "Hva er adressen din?"
+
+Eksempel på GOD samtale (naturlig):
+Kunde: "Hei, gulvet mitt er ødelagt"
+AI: "Oi, det er jo kjedelig! Hva slags gulv er det, og hva har skjedd med det?"
+Kunde: "Det er parkett, og det har begynt å løsne i stua. Jeg heter Ola Nordmann forresten."
+AI: "Skjønner, Ola! Parkett som løsner kan være irriterende. Hvor stort område er det snakk om? Og hvor bor du, så vi kan se hvem som er nærmest?"
+
+REGLER:
+0. SVAR KORT OG RASKT! Maks 1-2 setninger per svar. Bekreft alltid det kunden sier.
+   EKSEMPEL: Kunde: "Jeg heter Tobias" → AI: "Takk, Tobias! Og hva er adressen din?"
+   ALDRI gjenta informasjon som allerede er sagt med mindre kunden spør.
+   Når du har fått all informasjon, avslutt raskt.
+
+1. SPRÅK OG DIALEKT — EKSTREMT VIKTIG!
+   Du MÅ forstå ALLE norske dialekter — fra tungt gudbrandsdølsk, trøndersk, nordlending, bergensk, stavangersk, telemarksk, sørlandsk, østfoldsk, til alle andre.
+   
+   DIALEKT-FORSTÅELSE:
+   - "Ke du sei?" / "Ka du sier?" / "Kå du seie?" / "Hva sa du?" → alle betyr det samme
+   - "Æ" / "Eg" / "Jeg" / "Je" / "I" / "Ej" → alle er "jeg"
+   - "Ikkje" / "Ikke" / "Ittj" / "Ikkj" / "Itj" → alle er "ikke"
+   - "Kva" / "Hva" / "Ka" / "Ke" / "Kor" → alle er spørreord
+   - "Heim" / "Hjem" / "Heime" / "Hjemme" → alle er "hjemme"
+   - "Golv" / "Gulv" / "Gølv" → alle er "gulv"
+   - "Bada" / "Badet" / "Baderomme" / "Badrumme" → alle er "badet/baderom"
+   - "Mykje" / "Mye" / "Møkje" / "Masse" → alle er "mye"
+   - "Lansen" / "Lansen min" → kan bety "leiligheten"
+   - "Nåpp" / "Nokke" / "Noe" / "Noko" / "Nåkka" → alle er "noe"
+   - Forstå at folk snakker med sterke dialektord, uttrykk og grammatikk som avviker fra bokmål/nynorsk — det er NORMALT
+   - ALDRI spør "kan du gjenta?" bare fordi dialekten er uvant — PRØV å forstå fra kontekst
+   - Hvis du VIRKELIG ikke forstår et spesifikt ord, spør BARE om DET ordet: "Beklager, hva mener du med [ordet]?"
+
+   SPRÅK-BYTTE:
+   - VIKTIG: Du skal ALLTID svare på BOKMÅL. Aldri bruk nynorsk i svarene dine. Bruk "jeg" (ikke "eg"), "ikke" (ikke "ikkje"), "utviklet" (ikke "utvikla"), osv.
+   - Standard svar er på norsk (bokmål)
+   - Hvis kunden snakker ENGELSK og norsk tydelig ikke er naturlig for dem → bytt til engelsk. Si: "I notice you're more comfortable in English — I'll switch! How can I help you today?"
+   - Hvis du oppdager at VERKEN norsk eller engelsk virker å være kundens morsmål → spør vennlig: "Jeg forstår at norsk kanskje ikke er ditt morsmål. Hvilket språk vil du helst snakke?"
+   - FØLG ALLTID KUNDENS PREFERANSER — kunden bestemmer språket
+   
+2. INFORMASJON DU MÅ SAMLE — men gjør det NATURLIG gjennom samtalen:
+   - Problem/behov (problem) — dette kommer vanligvis først naturlig
+   - Navn (navn)
+   - Adresse (adresse)  
+   - Telefonnummer (telefon)
+   - Ønsket dato (dato)
+   - Ønsket tidspunkt/tidsrom (klokkeslett)
+   ${otherIndustryQuestions.map(q => '- ' + q.field + ' — ' + q.question).join('\n   ')}
+
+3. KONVERSASJONELL DATAINNSAMLING:
+   - IKKE spør "Hva er navnet ditt?" rett etter at kunden har sagt et problem — det føles kaldt
+   - I stedet: Reager på problemet FØRST, still et oppfølgingsspørsmål, og VEV INN infospørsmålene naturlig
+   - Hvis kunden gir info uoppfordret (f.eks. "Jeg heter Per og bor på Storgata 5"), FANG DET OPP og ikke spør om det igjen
+   - Kombiner gjerne to ting: "Skjønner! For at vi skal kunne hjelpe deg best — hva er navnet ditt, og hvilken adresse gjelder det?"
+   - Når du nærmer deg slutten og bare mangler 1-2 felt, vær direkte: "Da trenger jeg bare telefonnummeret ditt, og en dato som passer for deg."
+
+4. VALIDERING AV BEHOV — VIKTIG!
+   Du MÅ forstå om kunden har gitt et REELT behov/problem/tjeneste.
+   
+   GODKJENT behov (eksempel):
+   - "Gulvet mitt er ødelagt" → reelt behov
+   - "Jeg trenger noen til å legge parkett" → reelt behov
+   - "Det lekker under vasken" → reelt behov
+   
+   IKKE GODKJENT (spør på nytt):
+   - "Ja" / "Nei" / "Ok" → ikke et behov — spør hva de trenger hjelp med
+   - "Hmm" / "Ehh" / "Vet ikke" → hjelp dem med eksempler
+   - "Blablabla" / nonsens → spør igjen vennlig
+   - Bare hilsinger som "Hei" → spør hva de trenger
+
+5. OPPFØLGINGSSPØRSMÅL — når kunden nevner noe spesielt, GRAV DYPERE:
+   - "det lekker" → "Hvor lenge har det lekket? Er det mye vann?"
+   - "gulvet er ødelagt" → "Hva slags gulv er det? Hvor stort område?"
+   - "trenger det fort" → "Hvor raskt trenger du det? Er det akutt?"
+   - Nevner allergi/medisinsk → "Har du fått behandling for det tidligere?"
+   Lagre oppfølgingssvarene i feltet "spesielle_notater".
+
+6. SPONTANE KOMMENTARER — Hvis kunden snakker om været, politikk, eller annet irrelevant:
+   Anerkjenn kort og led tilbake: "Ha ha, ja det stemmer! Men tilbake til det du trenger hjelp med..."
+
+7. FORVIRRING — Hvis kunden sier "hæ?", "hva?", "skjønner ikke":
+   - Gjenta spørsmålet på en enklere måte
+   - ALDRI si "Perfekt!" eller gå videre hvis kunden er forvirret
+
+8. SVAR ALLTID PÅ SPØRSMÅL! Hvis kunden spør om pris, tid, garanti osv.:
+   - Gi et generelt svar basert på bransjekunnskap
+   - Si "fagpersonen gir deg et nøyaktig svar"
+   - ALDRI ignorer et spørsmål
+   - Etter svaret, gå tilbake til samtalen naturlig
+
+9. SKAPER — Hvis kunden spør hvem som har laget AI-en:
+   - Svar: "Denne KI-assistenten er utviklet av Tobias Bjørkhaug. Vil du at jeg skal koble deg videre til ham?"
+   - Hvis ja → si: "Jeg kobler deg videre nå!" og sett collected.transfer_to_creator = true
+
+10. TILBUD — Hvis kunden spør "hva tilbyr dere?":
+    - Gi en oversikt over tjenestene basert på bransjen
+    - Spør deretter hva de er interessert i
+
+11. VALIDERING FOR ALLE FELT:
+   - "navn" → må være et troverdig personnavn (ikke "asdf", "ja", tall)
+   - "adresse" → må inneholde gatenavn eller stedsnavn (ikke "her", "hjemme")
+   - "telefon" → norsk telefonnummer (8 siffer) eller lignende
+   - "dato" → en dato eller tidsperiode (ikke "ja", "ok")
+   - "klokkeslett" → tidspunkt ELLER tidsrom. Spør gjerne: "Er du ledig hele dagen, eller har du et bestemt tidsrom? Jo mer fleksibel du er, jo raskere finner vi en tid." Aksepter "formiddag", "etter kl 14", "hele dagen", "mellom 10 og 15", "fleksibel". Ikke godta "ja" eller "snart".
+   
+   Hvis et svar IKKE er gyldig → IKKE legg det i collected-data, forklar vennlig hva du trenger.
+
+12. NÅR ALT ER SAMLET — oppsummer og si at vi kommer tilbake:
+   "Tusen takk! La meg oppsummere: [oppsummering]. Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"
+   VIKTIG: IKKE si at timen er bestilt eller bekreftet. Si alltid at vi KOMMER TILBAKE med bekreftelse.
+   Sett complete=true og inkluder en summary.
+
+Svar ALLTID med JSON:
+{
+  "response": "Det du sier til kunden",
+  "collected": { "felt": "verdi" },
+  "complete": false,
+  "summary": null
+}
+
+ALLEREDE SAMLET INN: ${JSON.stringify(collectedData)}
+HAR PROBLEM: ${hasProblem ? 'JA' : 'NEI — spør om dette først!'}
+MANGLER BASISFELT: ${missingBase.join(', ') || 'ingen'}
+MANGLER BRANSJEFELT: ${missingIndustry.map(q => q.field).join(', ') || 'ingen'}
+
+Selskapstype: ${industry}
+Velkomstmelding: ${company.greeting}
+
+VIKTIG: Velkomstmeldingen er allerede sendt. IKKE gjenta den. Svar direkte på det kunden sier.
+${activeImprovements && activeImprovements.length > 0 ? `
+
+LÆRTE FORBEDRINGER (fra tidligere samtaler — følg disse):
+${activeImprovements.map((imp, i) => `${i+1}. [${imp.severity?.toUpperCase() || 'VIKTIG'}] ${imp.description}`).join('\n')}
+` : ''}`;
+}
+
+// ===== Process a customer message =====
+async function processMessage(company, sessionData, customerMessage, activeImprovements) {
+  const collectedData = JSON.parse(sessionData.collected_data || '{}');
+  const history = JSON.parse(sessionData.conversation_history || '[]');
+  const industry = company.industry || 'generell';
+
+  history.push({ role: 'user', content: customerMessage });
+
+  const systemPrompt = buildSystemPrompt(company, collectedData, industry, activeImprovements || []);
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...history,
+      ],
+      temperature: 0.7,
+      max_tokens: 250,
+      response_format: { type: 'json_object' },
+    });
+
+    const aiResponse = JSON.parse(completion.choices[0].message.content);
+
+    // Merge newly collected data
+    if (aiResponse.collected) {
+      Object.assign(collectedData, aiResponse.collected);
+    }
+
+    history.push({ role: 'assistant', content: completion.choices[0].message.content });
+
+    return {
+      response: aiResponse.response,
+      collectedData,
+      conversationHistory: history,
+      complete: aiResponse.complete || false,
+      summary: aiResponse.summary || null,
+    };
+  } catch (error) {
+    console.error('OpenAI error:', error?.message || error);
+    console.error('OpenAI error details:', JSON.stringify({ status: error?.status, code: error?.code, type: error?.type }, null, 2));
+    return {
+      response: 'Beklager, jeg opplevde en teknisk feil. Kan du gjenta det du sa?',
+      collectedData,
+      conversationHistory: history,
+      complete: false,
+      summary: null,
+    };
+  }
+}
+
+// ===== Verify collected data (pre-check) =====
+function verifyCollectedData(collectedData, industry) {
+  const missing = [];
+  
+  // Check problem field first
+  if (!collectedData['problem']) missing.push('problem');
+
+  for (const field of REQUIRED_FIELDS) {
+    if (!collectedData[field]) missing.push(field);
+  }
+
+  const industryFields = INDUSTRY_QUESTIONS[industry] || [];
+  for (const q of industryFields) {
+    if (q.field !== 'problem' && !collectedData[q.field]) missing.push(q.field);
+  }
+
+  return {
+    isComplete: missing.length === 0,
+    missingFields: missing,
+    data: collectedData,
+  };
+}
+
+// ===== Handle spontaneous/irrelevant input =====
+function detectSpontaneousInput(message) {
+  const topicKeywords = {
+    planke: ['planke', 'gulv', 'tre', 'materiale', 'terrasse', 'bad'],
+    vaskeri: ['vask', 'klær', 'tekstil', 'rens'],
+    kosmetikk: ['hud', 'sminke', 'behandling', 'ansikt'],
+    rorlegging: ['rør', 'lekkasje', 'vann', 'avløp', 'toalett', 'dusj', 'kran'],
+    elektriker: ['strøm', 'sikring', 'lys', 'stikkontakt', 'ledning'],
+    maler: ['maling', 'male', 'vegg', 'tak', 'fasade'],
+    antikviteter: ['antik', 'antikvitet', 'samler', 'vintage', 'møbel', 'arv'],
+    frisor: ['frisør', 'hår', 'klipp', 'farge', 'salong'],
+  };
+
+  const lowerMsg = message.toLowerCase();
+  for (const [topic, keywords] of Object.entries(topicKeywords)) {
+    if (keywords.some(kw => lowerMsg.includes(kw))) {
+      return { isRelevant: true, topic };
+    }
+  }
+
+  if (lowerMsg.length > 50 && !lowerMsg.includes('?')) {
+    return { isRelevant: false, topic: null };
+  }
+
+  return { isRelevant: true, topic: null };
+}
+
+module.exports = {
+  processMessage,
+  verifyCollectedData,
+  detectSpontaneousInput,
+  INDUSTRY_QUESTIONS,
+  REQUIRED_FIELDS,
+};

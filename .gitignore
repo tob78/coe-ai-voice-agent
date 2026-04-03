@@ -1,0 +1,4 @@
+.env
+*.env
+KOMPLETT-SYSTEMGUIDE.md
+node_modules/

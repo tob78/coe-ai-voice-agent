@@ -1,0 +1,1702 @@
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER =====
+// Express server with Twilio webhooks for voice and SMS
+
+require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const express = require('express');
+const cors = require('cors');
+const { v4: uuidv4 } = require('uuid');
+const VoiceResponse = require('twilio').twiml.VoiceResponse;
+const MessagingResponse = require('twilio').twiml.MessagingResponse;
+const OpenAI = require('openai');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const { db, pool, initDatabase } = require('./db');
+const { processMessage, verifyCollectedData } = require('./ai-conversation');
+const { autoImproveFromCall, getActiveImprovements, getImprovementsForCall, deactivateImprovement } = require('./auto-learner');
+const { sendToMontour, sendToCustomer, sendBookingConfirmation, handleIncomingSms, forwardImageToMontour, startReminderScheduler, parseAvailabilityText, sendErrorAlert } = require('./sms-handler');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Serve CRM static files
+app.use('/crm', express.static(path.join(__dirname, 'public')));
+
+// Redirect /crm to /crm/ for proper static serving
+app.get('/crm', (req, res) => res.redirect('/crm/'));
+
+const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || 
+  (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null) ||
+  'https://backend-production-6779.up.railway.app';
+
+// NOTE: Speech hints removed — Whisper handles Norwegian natively with its prompt parameter
+
+// ===== Natural TTS with Polly.Liv-Neural =====
+function naturalSay(twiml, text) {
+  // Use alice voice with nb-NO — guaranteed to work on all Twilio accounts including trial
+  twiml.say({ voice: 'alice', language: 'nb-NO' }, text);
+}
+
+// Helper: escape XML special characters
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+// ===== Record customer speech (Whisper will transcribe) =====
+function recordCustomerSpeech(twiml, actionUrl) {
+  twiml.record({
+    action: actionUrl,
+    method: 'POST',
+    maxLength: 30,        // Max 30 seconds per utterance
+    timeout: 4,           // 4 seconds of silence = end of speech
+    playBeep: false,      // No beep — natural conversation
+    trim: 'trim-silence', // Remove silence from start/end
+    finishOnKey: '',      // Don't end on keypress (let them talk)
+  });
+  // Fallback if Record fails entirely
+  const separator = actionUrl.includes('?') ? '&' : '?';
+  twiml.redirect(`${actionUrl}${separator}noInput=1`);
+}
+
+// ===== Transcribe audio with OpenAI Whisper =====
+async function transcribeWithWhisper(recordingUrl, recordingSid, companyContext) {
+  const audioUrl = `${recordingUrl}.mp3`;
+  
+  // Download recording from Twilio (requires auth)
+  const authHeader = 'Basic ' + Buffer.from(
+    `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+  ).toString('base64');
+  
+  // Retry download up to 3 times (recording may not be ready immediately)
+  let audioBuffer;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const response = await fetch(audioUrl, { headers: { 'Authorization': authHeader } });
+      if (response.ok) {
+        audioBuffer = Buffer.from(await response.arrayBuffer());
+        break;
+      }
+      console.log(`⏳ Recording not ready yet (attempt ${attempt}/3), waiting...`);
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    } catch (err) {
+      console.log(`⏳ Download attempt ${attempt}/3 failed: ${err.message}`);
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
+  
+  if (!audioBuffer || audioBuffer.length < 100) {
+    throw new Error('Could not download recording from Twilio');
+  }
+  
+  // Write to temp file for Whisper API
+  const tmpPath = `/tmp/whisper_${recordingSid || Date.now()}.mp3`;
+  fs.writeFileSync(tmpPath, audioBuffer);
+  
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tmpPath),
+      model: 'whisper-1',
+      language: 'no',  // Norwegian — Whisper is excellent at this!
+      prompt: `Norsk telefonsamtale med ${companyContext || 'et norsk selskap'}. Kunden oppgir sitt navn, adresse, telefonnummer og dato. Vanlige norske navn, gateadresser og byer. Tall er telefonnumre med 8 siffer.`,
+    });
+    console.log(`🎤 Whisper transcription: "${transcription.text}"`);
+    return transcription.text;
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch(e) {} // Clean up temp file
+  }
+}
+
+// ===== Transcribe FULL recording + extract customer info =====
+async function transcribeFullRecording(audioUrl, callId) {
+  try {
+    const fullUrl = `${audioUrl}.mp3`;
+    const authHeader = 'Basic ' + Buffer.from(
+      `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+    ).toString('base64');
+    
+    // Download full recording
+    let response;
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        response = await fetch(fullUrl, { headers: { 'Authorization': authHeader } });
+        if (response.ok) break;
+      } catch(e) {}
+      if (attempt < 5) await new Promise(r => setTimeout(r, 3000 * attempt));
+    }
+    if (!response || !response.ok) {
+      console.error('❌ Kunne ikke laste ned opptak for full transkripsjon');
+      return null;
+    }
+    
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const tmpPath = `/tmp/full_transcript_${callId}_${Date.now()}.mp3`;
+    fs.writeFileSync(tmpPath, buffer);
+    
+    // Transcribe with Whisper
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(tmpPath),
+      model: 'whisper-1',
+      language: 'no',
+      response_format: 'verbose_json',
+      timestamp_granularities: ['segment']
+    });
+    
+    const fullText = transcription.text;
+    console.log(`📝 Full transkripsjon (${fullText.length} tegn) for call ${callId}`);
+    
+    // Save full transcript to call
+    await db.run('UPDATE calls SET full_audio_transcript = $1 WHERE id = $2', fullText, callId);
+    
+    // Extract customer info with GPT-4o
+    const extractedInfo = await extractInfoFromTranscript(fullText, callId);
+    
+    fs.unlinkSync(tmpPath);
+    return { transcript: fullText, extractedInfo };
+  } catch(err) {
+    console.error('❌ Full transkripsjon feilet:', err.message);
+    return null;
+  }
+}
+
+async function extractInfoFromTranscript(transcript, callId) {
+  try {
+    const extraction = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: `Du er en informasjonsuttrekker. Analyser denne telefonsamtale-transkripsjonen og trekk ut all kundeinformasjon du finner. Returner et JSON-objekt med følgende felter (bruk null hvis ikke nevnt):
+{
+  "navn": "kundens fulle navn",
+  "adresse": "gateadresse",
+  "postnummer": "postnummer",
+  "telefon": "telefonnummer",
+  "epost": "e-postadresse",
+  "behov": "hva kunden trenger / problemet",
+  "dato": "ønsket dato",
+  "klokkeslett": "ønsket tidspunkt",
+  "tilgjengelighet": "når kunden er tilgjengelig",
+  "spesielle_behov": "allergier, barn, dyr, medisinske behov etc.",
+  "prisforventning": "eventuell prisforventning nevnt",
+  "hastegrad": "normal/haster/akutt",
+  "ekstra_detaljer": "andre relevante detaljer fra samtalen",
+  "sammendrag": "kort oppsummering av samtalen på 1-2 setninger"
+}
+Svar KUN med JSON, ingen annen tekst.` },
+        { role: 'user', content: transcript }
+      ],
+      temperature: 0.1
+    });
+    
+    const infoText = extraction.choices[0].message.content.replace(/```json\n?|```/g, '').trim();
+    const info = JSON.parse(infoText);
+    
+    // Save extracted info to call
+    await db.run('UPDATE calls SET extracted_info = $1 WHERE id = $2', JSON.stringify(info), callId);
+    
+    // Auto-update customer fields if they're empty
+    const call = await db.get('SELECT * FROM calls WHERE id = $1', callId);
+    if (call && call.customer_id) {
+      const customer = await db.get('SELECT * FROM customers WHERE id = $1', call.customer_id);
+      if (customer) {
+        const updates = [];
+        const values = [];
+        let paramIdx = 1;
+        
+        if (!customer.name && info.navn) { updates.push(`name = $${paramIdx++}`); values.push(info.navn); }
+        if (!customer.address && info.adresse) { updates.push(`address = $${paramIdx++}`); values.push(info.adresse); }
+        if (!customer.postal_code && info.postnummer) { updates.push(`postal_code = $${paramIdx++}`); values.push(info.postnummer); }
+        if (!customer.phone && info.telefon) { updates.push(`phone = $${paramIdx++}`); values.push(info.telefon); }
+        if (!customer.email && info.epost) { updates.push(`email = $${paramIdx++}`); values.push(info.epost); }
+        if (!customer.service_requested && info.behov) { updates.push(`service_requested = $${paramIdx++}`); values.push(info.behov); }
+        if (!customer.preferred_date && info.dato) { updates.push(`preferred_date = $${paramIdx++}`); values.push(info.dato); }
+        if (!customer.preferred_time && info.klokkeslett) { updates.push(`preferred_time = $${paramIdx++}`); values.push(info.klokkeslett); }
+        if (!customer.comment && info.ekstra_detaljer) { updates.push(`comment = $${paramIdx++}`); values.push(info.ekstra_detaljer); }
+        
+        if (updates.length > 0) {
+          values.push(call.customer_id);
+          await db.run(`UPDATE customers SET ${updates.join(', ')} WHERE id = $${paramIdx}`, ...values);
+          console.log(`✅ Auto-oppdaterte ${updates.length} felt for kunde ${call.customer_id} fra transkripsjon`);
+        }
+      }
+    }
+    
+    console.log(`🔍 Info hentet ut fra transkripsjon for call ${callId}:`, info.sammendrag);
+    return info;
+  } catch(err) {
+    console.error('❌ Info-uttrekk feilet:', err.message);
+    return {};
+  }
+}
+
+// ===============================================================
+// HEALTH CHECK
+// ===============================================================
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(), 
+    version: '3.5.0',
+    env: {
+      openai: !!process.env.OPENAI_API_KEY,
+      twilio_sid: !!process.env.TWILIO_ACCOUNT_SID,
+      twilio_token: !!process.env.TWILIO_AUTH_TOKEN,
+      database: !!process.env.DATABASE_URL
+    }
+  });
+});
+
+// ===============================================================
+// 1. INCOMING VOICE CALL - Twilio webhook
+// ===============================================================
+app.post('/twilio/voice', async (req, res) => {
+  try {
+    const callSid = req.body.CallSid;
+    const from = req.body.From;
+    
+    console.log(`📞 Incoming call from ${from}, SID: ${callSid}`);
+
+    // Find company by the called number
+    const calledNumber = req.body.To;
+    const company = await db.get('SELECT * FROM companies WHERE phone = $1', calledNumber);
+
+    if (!company) {
+      console.log('⚠️ No company found for number:', calledNumber);
+      const twiml = new VoiceResponse();
+      naturalSay(twiml, 'Beklager, dette nummeret er ikke konfigurert. Ha en fin dag!');
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+
+    // Check if returning customer
+    const existingCustomer = await db.get(
+      'SELECT * FROM customers WHERE phone = $1 AND company_id = $2 ORDER BY created_at DESC LIMIT 1',
+      from, company.id
+    );
+
+    let greetingText = company.greeting;
+    if (existingCustomer && existingCustomer.name && existingCustomer.name !== 'Ny innringer' && existingCustomer.name !== 'Ukjent') {
+      greetingText = `Velkommen tilbake, ${existingCustomer.name}! ${company.greeting.split('.').slice(1).join('.')}`;
+    }
+
+    // Create partial customer immediately — so we always have a record + audio link
+    const customerResult = await db.run(
+      `INSERT INTO customers (company_id, name, phone, status) VALUES ($1, 'Ny innringer', $2, 'Ny') RETURNING id`,
+      company.id, from || 'Ukjent'
+    );
+    const customerId = customerResult.rows[0].id;
+
+    // Create session with customer link
+    const sessionId = uuidv4();
+    await db.run(`INSERT INTO call_sessions (id, call_sid, company_id, state, customer_id) VALUES ($1, $2, $3, 'greeting', $4)`,
+      sessionId, callSid, company.id, customerId);
+
+    // Log the call — linked to customer from the start
+    await db.run(`INSERT INTO calls (company_id, customer_id, twilio_call_sid, status) VALUES ($1, $2, $3, 'in-progress')`,
+      company.id, customerId, callSid);
+
+    // Build TwiML response
+    const twiml = new VoiceResponse();
+
+    // Start call recording via REST API (runs in background, doesn't block TwiML)
+    try {
+      const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      twilioClient.calls(callSid).recordings.create({
+        recordingStatusCallback: `${BASE_URL}/twilio/recording`,
+        recordingStatusCallbackMethod: 'POST',
+      }).then(rec => console.log(`🎙️ Recording started: ${rec.sid}`))
+        .catch(err => console.error('⚠️ Recording start failed:', err.message));
+    } catch (recErr) {
+      console.error('⚠️ Could not start recording:', recErr.message);
+    }
+
+    // Greet the customer first, then record their response
+    naturalSay(twiml, greetingText);
+    
+    // Record customer speech (Whisper will transcribe — much better than Twilio STT!)
+    recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+
+    res.type('text/xml').send(twiml.toString());
+  } catch (err) {
+    console.error('🚨 CRITICAL ERROR in /twilio/voice:', err.message, err.stack);
+    // NEVER crash — always return valid TwiML so the caller hears something
+    const twiml = new VoiceResponse();
+    naturalSay(twiml, 'Beklager, vi opplever tekniske problemer akkurat nå. Vennligst prøv igjen om et øyeblikk, eller ring oss direkte. Ha en fin dag!');
+    res.type('text/xml').send(twiml.toString());
+    
+    // Send alert (async, don't block response)
+    sendErrorAlert(null, req.body?.CallSid, err.message, req.body?.From).catch(() => {});
+  }
+});
+
+// ===============================================================
+// 2. VOICE CONVERSATION LOOP - Process speech and respond
+// ===============================================================
+app.post('/twilio/voice/respond', async (req, res) => {
+  const sessionId = req.query.sessionId;
+  let company = null;
+  let session = null;
+  
+  try {
+    // Record callback sends RecordingUrl + RecordingDuration (NOT SpeechResult)
+    const recordingUrl = req.body.RecordingUrl;
+    const recordingSid = req.body.RecordingSid;
+    const recordingDuration = parseInt(req.body.RecordingDuration || '0');
+    const noInput = req.query.noInput === '1';
+
+    console.log(noInput 
+      ? '🔇 No input from customer (retry)' 
+      : `🎙️ Recording received: ${recordingSid}, duration: ${recordingDuration}s`);
+
+    // Get session
+    session = await db.get('SELECT * FROM call_sessions WHERE id = $1', sessionId);
+    if (!session) {
+      const twiml = new VoiceResponse();
+      naturalSay(twiml, 'Beklager, det oppsto en teknisk feil. Kan du prøve å ringe igjen? Ha en fin dag!');
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+
+    // Get company
+    company = await db.get('SELECT * FROM companies WHERE id = $1', session.company_id);
+
+    const twiml = new VoiceResponse();
+
+    // ===== HANDLE NO INPUT — RETRY UP TO 3 TIMES =====
+    if (noInput || recordingDuration < 1) {
+      const retryCount = (session.no_input_count || 0) + 1;
+      await db.run('UPDATE call_sessions SET no_input_count = $1 WHERE id = $2', retryCount, sessionId);
+
+      if (retryCount >= 3) {
+        // Give up after 3 retries — update call outcome
+        naturalSay(twiml, 'Vi hørte dessverre ikke noe svar. Tusen takk for at du ringte. Ha en fin dag!');
+        // Save transcript even for no-booking calls
+        const noBookingTranscript = JSON.parse(session.conversation_history || '[]')
+          .map(msg => `${msg.role === 'assistant' ? 'AI' : 'Kunde'}: ${msg.content}`)
+          .join('\n');
+        await db.run(`UPDATE calls SET call_outcome = 'no_booking', status = 'completed', transcript = $1 WHERE twilio_call_sid = $2`, 
+          noBookingTranscript, session.call_sid);
+        
+        // Auto-analyse av avbrutt samtale
+        if (noBookingTranscript) {
+          try {
+            const CallAnalyzer = require('./call-analyzer');
+            const analyzer = new CallAnalyzer(process.env.OPENAI_API_KEY);
+            const analysis = await analyzer.analyzeSingleCall(noBookingTranscript, company?.name || 'Ukjent');
+            if (analysis) {
+              await db.run(`UPDATE calls SET analysis_json = $1 WHERE twilio_call_sid = $2`,
+                JSON.stringify(analysis), session.call_sid);
+              console.log(`📊 Avbrutt samtale analysert: Kvalitet ${analysis.kvalitetsscore}/10`);
+
+              // === AUTO-LEARNING: Generer forbedringer for avbrutt samtale ===
+              try {
+                if (pool) {
+                  const callRecord = await db.get('SELECT id FROM calls WHERE twilio_call_sid = $1', session.call_sid);
+                  const analysisData = typeof analysis === 'string' ? JSON.parse(analysis) : analysis;
+                  await autoImproveFromCall(pool, callRecord?.id || 0, company.id, noBookingTranscript, analysisData);
+                  console.log('[AUTO-LEARN] Forbedringer generert for avbrutt samtale');
+                }
+              } catch (autoLearnErr) {
+                console.error('[AUTO-LEARN] Feil:', autoLearnErr.message);
+              }
+            }
+          } catch (analyzeErr) {
+            console.error('⚠️ Auto-analyse feilet:', analyzeErr.message);
+          }
+        }
+        res.type('text/xml').send(twiml.toString());
+        return;
+      }
+
+      // Retry with friendly message then record again
+      const retryMessages = [
+        'Beklager, jeg hørte ikke helt hva du sa. Kan du gjenta?',
+        'Jeg fikk dessverre ikke med meg det. Hva kan jeg hjelpe deg med?',
+        'Er du der fortsatt? Hva kan jeg hjelpe deg med i dag?'
+      ];
+      naturalSay(twiml, retryMessages[retryCount - 1]);
+      recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+
+    // ===== TRANSCRIBE WITH OPENAI WHISPER =====
+    let speechResult;
+    try {
+      speechResult = await transcribeWithWhisper(recordingUrl, recordingSid, company?.name || '');
+    } catch (whisperErr) {
+      console.error('⚠️ Whisper transcription failed:', whisperErr.message);
+      // Treat as no input — ask customer to repeat
+      naturalSay(twiml, 'Beklager, jeg fikk ikke med meg det. Kan du si det en gang til?');
+      recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+
+    if (!speechResult || speechResult.trim() === '') {
+      // Empty transcription — ask to repeat
+      naturalSay(twiml, 'Beklager, jeg hørte ikke helt hva du sa. Kan du gjenta?');
+      recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+      res.type('text/xml').send(twiml.toString());
+      return;
+    }
+
+    // Reset no-input counter on successful speech
+    if (session.no_input_count > 0) {
+      await db.run('UPDATE call_sessions SET no_input_count = 0 WHERE id = $1', sessionId);
+    }
+
+    // Load active auto-learned improvements for this company
+    const activeImprovements = pool ? await getActiveImprovements(pool, company.id) : [];
+
+    // Process with AI
+    const result = await processMessage(company, session, speechResult, activeImprovements);
+
+    // Update session
+    await db.run(`UPDATE call_sessions SET collected_data = $1, conversation_history = $2, state = $3 WHERE id = $4`,
+      JSON.stringify(result.collectedData),
+      JSON.stringify(result.conversationHistory),
+      result.complete ? 'complete' : 'collecting',
+      sessionId
+    );
+
+    // ===== PROGRESSIVELY UPDATE CUSTOMER with collected data =====
+    const data = result.collectedData || {};
+    const customerId = session.customer_id;
+    if (customerId) {
+      const updates = [];
+      const values = [];
+      let paramIdx = 1;
+      
+      if (data.navn && data.navn !== '') { updates.push(`name = $${paramIdx++}`); values.push(data.navn); }
+      if (data.adresse && data.adresse !== '') { updates.push(`address = $${paramIdx++}`); values.push(data.adresse); }
+      if (data.telefon && data.telefon !== '') { updates.push(`phone = $${paramIdx++}`); values.push(data.telefon); }
+      if (data.dato && data.dato !== '') { updates.push(`preferred_date = $${paramIdx++}`); values.push(data.dato); }
+      if (data.klokkeslett && data.klokkeslett !== '') { updates.push(`preferred_time = $${paramIdx++}`); values.push(data.klokkeslett); }
+
+      // Extract postal code from address
+      const postalMatch = (data.adresse || '').match(/\b(\d{4})\b/);
+      if (postalMatch) { updates.push(`postal_code = $${paramIdx++}`); values.push(postalMatch[1]); }
+
+      if (updates.length > 0) {
+        values.push(customerId);
+        await db.run(`UPDATE customers SET ${updates.join(', ')} WHERE id = $${paramIdx}`, ...values);
+      }
+    }
+
+    if (result.complete) {
+      // All data collected — finalize customer
+      naturalSay(twiml, result.response);
+      naturalSay(twiml, 'Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!');
+
+      // SEND TWIML IMMEDIATELY — don't let post-processing delay the response to Twilio
+      res.type('text/xml').send(twiml.toString());
+
+      // Do all post-completion work async so Twilio doesn't timeout
+      const postData = { ...data };
+      const postHistory = [...result.conversationHistory];
+      const postSummary = result.summary;
+      const postCallSid = session.call_sid;
+      const postCompany = { ...company };
+
+      setImmediate(async () => {
+        try {
+          const industryFields = {};
+          for (const [key, val] of Object.entries(postData)) {
+            if (!['navn', 'adresse', 'telefon', 'dato', 'klokkeslett'].includes(key)) {
+              industryFields[key] = val;
+            }
+          }
+
+          // UPDATE existing customer
+          await db.run(`UPDATE customers SET status = 'Booket', service_requested = $1, industry_data = $2, comment = $3 WHERE id = $4`,
+            postSummary || '', JSON.stringify(industryFields), postSummary || '', customerId);
+
+          // Parse and save structured availability
+          const availText = [postData.dato, postData.klokkeslett].filter(Boolean).join(' ');
+          const availSlots = parseAvailabilityText(availText);
+          if (availSlots.length > 0) {
+            await db.run('UPDATE customers SET availability_json = $1 WHERE id = $2',
+              JSON.stringify(availSlots), customerId);
+          }
+
+          const customer = await db.get('SELECT * FROM customers WHERE id = $1', customerId);
+
+          // Save full transcript
+          const fullTranscript = postHistory
+            .map(msg => `${msg.role === 'assistant' ? 'AI' : 'Kunde'}: ${msg.content}`)
+            .join('\n');
+          
+          await db.run(`UPDATE calls SET status = 'completed', call_outcome = 'booking', transcript = $1 WHERE twilio_call_sid = $2`, 
+            fullTranscript, postCallSid);
+
+          // Update call count for returning customers
+          if (postData.telefon) {
+            const prevCustomer = await db.get(
+              'SELECT id, call_count FROM customers WHERE phone = $1 AND company_id = $2 AND id != $3 ORDER BY created_at DESC LIMIT 1',
+              postData.telefon, postCompany.id, customer.id
+            );
+            if (prevCustomer) {
+              const newCount = (prevCustomer.call_count || 0) + 1;
+              await db.run('UPDATE customers SET call_count = $1 WHERE phone = $2 AND company_id = $3',
+                newCount, postData.telefon, postCompany.id);
+            }
+          }
+
+          // Auto-analyse (GPT-4o — can take several seconds)
+          try {
+            const CallAnalyzer = require('./call-analyzer');
+            const analyzer = new CallAnalyzer(process.env.OPENAI_API_KEY);
+            const analysis = await analyzer.analyzeSingleCall(fullTranscript, postCompany.name);
+            if (analysis) {
+              await db.run(`UPDATE calls SET analysis_json = $1 WHERE twilio_call_sid = $2`,
+                JSON.stringify(analysis), postCallSid);
+              console.log(`📊 Samtale analysert: Kvalitet ${analysis.kvalitetsscore}/10`);
+
+              // === AUTO-LEARNING: Generer forbedringer automatisk ===
+              try {
+                if (pool) {
+                  const callRecord = await db.get('SELECT id FROM calls WHERE twilio_call_sid = $1', postCallSid);
+                  const analysisData = typeof analysis === 'string' ? JSON.parse(analysis) : analysis;
+                  await autoImproveFromCall(pool, callRecord?.id || 0, postCompany.id, fullTranscript, analysisData);
+                  console.log('[AUTO-LEARN] Forbedringer generert for samtale');
+                }
+              } catch (autoLearnErr) {
+                console.error('[AUTO-LEARN] Feil:', autoLearnErr.message);
+              }
+            }
+          } catch (analyzeErr) {
+            console.error('⚠️ Auto-analyse feilet:', analyzeErr.message);
+          }
+
+          // Send SMS to montør
+          await sendToMontour(customer, postCompany);
+
+          // Send bestillingsbekreftelse SMS
+          if (customer.phone) {
+            await sendBookingConfirmation(customer, postCompany);
+          }
+
+          console.log(`✅ Post-completion work done for call ${postCallSid}`);
+        } catch (postErr) {
+          console.error('🚨 Post-completion error:', postErr.message);
+          try {
+            await db.run(`UPDATE calls SET error_flag = true, error_details = $1 WHERE twilio_call_sid = $2`,
+              `Post-prosessering feilet: ${postErr.message}`, postCallSid);
+            await sendErrorAlert(postCompany, postCallSid, postErr.message, null);
+          } catch(e) {}
+        }
+      });
+
+      return; // Already sent response above
+    } else {
+      // Continue conversation — speak response then record next input
+      naturalSay(twiml, result.response);
+      recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+    }
+
+    res.type('text/xml').send(twiml.toString());
+    
+  } catch (err) {
+    console.error('🚨 CRITICAL ERROR in /twilio/voice/respond:', err.message, err.stack);
+    
+    // NEVER crash or hang up! Always give the customer a graceful response
+    const twiml = new VoiceResponse();
+    
+    // Try to continue the conversation — ask customer to repeat
+    naturalSay(twiml, 'Beklager, jeg fikk ikke med meg det. Kan du gjenta det du sa?');
+    recordCustomerSpeech(twiml, `${BASE_URL}/twilio/voice/respond?sessionId=${sessionId}`);
+    
+    res.type('text/xml').send(twiml.toString());
+    
+    // Mark error in database + send alert (async, don't block response)
+    (async () => {
+      try {
+        // Mark call with error flag
+        if (session?.call_sid) {
+          await db.run(`UPDATE calls SET error_flag = true, error_details = $1 WHERE twilio_call_sid = $2`,
+            err.message, session.call_sid);
+        }
+        // Mark existing customer (created at call start) with error flag
+        const customerId = session?.customer_id;
+        if (customerId) {
+          await db.run('UPDATE customers SET error_flag = true, error_details = $1 WHERE id = $2',
+            `Feil under samtale: ${err.message}`, customerId);
+        }
+        // Send SMS + email alert to boss
+        await sendErrorAlert(company, session?.call_sid, err.message, req.body?.From);
+      } catch (alertErr) {
+        console.error('🚨 Failed to send error alert:', alertErr.message);
+      }
+    })();
+  }
+});
+
+// ===============================================================
+// 3. RECORDING WEBHOOK - Save audio URL
+// ===============================================================
+app.post('/twilio/recording', async (req, res) => {
+  const callSid = req.body.CallSid;
+  const recordingUrl = req.body.RecordingUrl;
+
+  console.log(`🎙️ Recording saved for call ${callSid}: ${recordingUrl}`);
+
+  // Find and update the call
+  const call = await db.get('SELECT * FROM calls WHERE twilio_call_sid = $1', callSid);
+  if (call) {
+    await db.run('UPDATE calls SET audio_url = $1 WHERE id = $2', recordingUrl, call.id);
+    if (call.customer_id) {
+      await db.run('UPDATE customers SET audio_url = $1 WHERE id = $2', recordingUrl, call.customer_id);
+      // Count all calls for this customer
+      const callCountRow = await db.get('SELECT COUNT(*) as count FROM calls WHERE customer_id = $1', call.customer_id);
+      await db.run('UPDATE customers SET call_count = $1 WHERE id = $2', callCountRow.count, call.customer_id);
+    }
+    
+    // Auto-transkriber hele opptaket + trekk ut kundeinfo (kjører i bakgrunn)
+    transcribeFullRecording(recordingUrl, call.id).then(result => {
+      if (result) {
+        console.log(`✅ Full transkripsjon + info-uttrekk ferdig for call ${call.id}`);
+      }
+    }).catch(err => {
+      console.error(`⚠️ Bakgrunn-transkripsjon feilet for call ${call.id}:`, err.message);
+    });
+  }
+
+  res.sendStatus(200);
+});
+
+// ===============================================================
+// 4. INCOMING SMS - Handle montør responses and customer photos
+// ===============================================================
+app.post('/twilio/sms', async (req, res) => {
+  const from = req.body.From;
+  const body = req.body.Body || '';
+  const mediaUrl = req.body.MediaUrl0;
+
+  console.log(`💬 SMS from ${from}: ${body}`);
+
+  const twiml = new MessagingResponse();
+
+  // Check if it's a photo from a customer
+  if (mediaUrl) {
+    const customer = await db.get('SELECT c.*, co.montour_phone FROM customers c JOIN companies co ON c.company_id = co.id WHERE c.phone = $1 ORDER BY c.created_at DESC LIMIT 1', from);
+    if (customer) {
+      const company = await db.get('SELECT * FROM companies WHERE id = $1', customer.company_id);
+      await forwardImageToMontour(customer, company, mediaUrl);
+      twiml.message('Takk! Bildet er sendt videre til montøren. 📸');
+    }
+  } else {
+    // Check for BEKREFT command from worker
+    const bekreftMatch = body.trim().match(/^BEKREFT\s+(\d+)/i);
+    if (bekreftMatch) {
+      const customerId = parseInt(bekreftMatch[1]);
+      try {
+        const customer = await db.get('SELECT * FROM customers WHERE id = $1', customerId);
+        if (!customer) {
+          twiml.message('⚠️ Fant ingen kunde med ID ' + customerId);
+        } else {
+          const company = await db.get('SELECT * FROM companies WHERE id = $1', customer.company_id);
+          // Verify sender is worker for this company
+          if (company && company.montour_phone && from.replace(/\s/g,'').includes(company.montour_phone.replace(/\+/g,''))) {
+            // Confirm the appointment
+            const label = APPOINTMENT_LABELS[company.industry] || 'time';
+            await db.run(`UPDATE customers SET confirmation_status = 'confirmed', confirmed_at = NOW(), confirmed_by = 'SMS', status = CASE WHEN status = 'Ny' THEN 'Booket' ELSE status END WHERE id = $1`, customerId);
+            
+            // Send confirmation SMS to customer
+            if (company.sms_confirm_customer !== false && customer.phone) {
+              const dateText = customer.preferred_date ? `\n📅 Dato: ${customer.preferred_date}` : '';
+              const timeText = customer.preferred_time ? `\n⏰ Tid: ${customer.preferred_time}` : '';
+              const confirmMsg = `✅ Bekreftelse fra ${company.name}\nHei ${customer.name || ''}! Din ${label} er bekreftet.${dateText}${timeText}\n${customer.service_requested ? 'Tjeneste: ' + customer.service_requested : ''}\nVi gleder oss til å se deg! 😊`;
+              const { sendSms: smsFunc } = require('./sms-handler');
+              await smsFunc(customer.phone, confirmMsg.trim());
+            }
+            
+            // Schedule reminder
+            if (company.sms_remind_customer !== false) {
+              const { scheduleReminder } = require('./sms-handler');
+              try { await scheduleReminder(customer, company); } catch(e) {}
+            }
+            
+            twiml.message(`✅ ${label.charAt(0).toUpperCase() + label.slice(1)} for ${customer.name} er bekreftet! Bekreftelse sendt til kunden.`);
+          } else {
+            twiml.message('⚠️ Du har ikke tilgang til å bekrefte denne bestillingen.');
+          }
+        }
+      } catch(e) {
+        console.error('BEKREFT error:', e);
+        twiml.message('⚠️ Noe gikk galt ved bekreftelse. Prøv igjen.');
+      }
+    } else {
+      // Handle other montør SMS responses
+      const result = await handleIncomingSms(from, body);
+      
+      if (result.handled) {
+        if (result.action === 'accepted') {
+          twiml.message('✅ Registrert! Oppdraget er godtatt.');
+        } else if (result.action === 'price_set') {
+          twiml.message(`✅ Pris ${result.price} kr registrert.`);
+        } else if (result.action === 'completed') {
+          twiml.message('✅ Oppdraget er registrert som fullført!');
+        } else {
+          twiml.message('✅ Kommentaren din er lagret.');
+        }
+      } else {
+        twiml.message('⚠️ Kunne ikke koble meldingen til et oppdrag.');
+      }
+    }
+  }
+
+  res.type('text/xml').send(twiml.toString());
+});
+
+// ===============================================================
+// 5. REST API - For CRM frontend
+// ===============================================================
+
+// Get all customers
+app.get('/api/customers', async (req, res) => {
+  const customers = await db.all(`
+    SELECT c.*, co.name as company_name, co.industry as company_industry
+    FROM customers c
+    LEFT JOIN companies co ON c.company_id = co.id
+    ORDER BY c.created_at DESC
+  `);
+  res.json(customers);
+});
+
+// Advanced customer search (MUST be before /api/customers/:id)
+app.get('/api/customers/search', async (req, res) => {
+  const { q, status, company_id, postal_code, price_min, price_max, date_from, date_to, cancelled } = req.query;
+  let sql = `
+    SELECT c.*, co.name as company_name, co.industry as company_industry
+    FROM customers c
+    LEFT JOIN companies co ON c.company_id = co.id
+    WHERE 1=1
+  `;
+  const params = [];
+  let paramIdx = 1;
+  
+  if (q) {
+    sql += ` AND (c.name LIKE $${paramIdx} OR c.phone LIKE $${paramIdx + 1} OR c.address LIKE $${paramIdx + 2} OR c.comment LIKE $${paramIdx + 3})`;
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    paramIdx += 4;
+  }
+  if (status) { sql += ` AND c.status = $${paramIdx++}`; params.push(status); }
+  if (company_id) { sql += ` AND c.company_id = $${paramIdx++}`; params.push(company_id); }
+  if (postal_code) { sql += ` AND c.postal_code = $${paramIdx++}`; params.push(postal_code); }
+  if (price_min) { sql += ` AND c.price >= $${paramIdx++}`; params.push(price_min); }
+  if (price_max) { sql += ` AND c.price <= $${paramIdx++}`; params.push(price_max); }
+  if (date_from) { sql += ` AND c.preferred_date >= $${paramIdx++}`; params.push(date_from); }
+  if (date_to) { sql += ` AND c.preferred_date <= $${paramIdx++}`; params.push(date_to); }
+  if (cancelled === '1') { sql += ' AND c.cancelled = 1'; }
+  if (cancelled === '0') { sql += ' AND (c.cancelled = 0 OR c.cancelled IS NULL)'; }
+  
+  sql += ' ORDER BY c.created_at DESC LIMIT 500';
+  res.json(await db.all(sql, ...params));
+});
+
+// Get single customer
+app.get('/api/customers/:id', async (req, res) => {
+  const customer = await db.get(`
+    SELECT c.*, co.name as company_name, co.industry as company_industry
+    FROM customers c
+    LEFT JOIN companies co ON c.company_id = co.id
+    WHERE c.id = $1
+  `, req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Not found' });
+  res.json(customer);
+});
+
+// Update customer
+app.patch('/api/customers/:id', async (req, res) => {
+  const fields = req.body;
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const vals = Object.values(fields);
+  const idIdx = keys.length + 1;
+  await db.run(`UPDATE customers SET ${sets}, updated_at = NOW() WHERE id = $${idIdx}`, ...vals, req.params.id);
+  res.json({ success: true });
+});
+
+// Create customer
+app.post('/api/customers', async (req, res) => {
+  const { company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json, excluded_dates, status } = req.body;
+  const result = await db.run(`INSERT INTO customers (company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json, excluded_dates, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+    company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json || null, excluded_dates || null, status || 'Ny');
+  
+  const customerId = result.rows[0].id;
+
+  // SMS cascade — depends on whether company requires worker approval
+  try {
+    const customer = await db.get('SELECT * FROM customers WHERE id = $1', customerId);
+    const company = await db.get('SELECT * FROM companies WHERE id = $1', company_id);
+    if (customer && company && customer.phone) {
+      if (company.requires_worker_approval) {
+        // APPROVAL FLOW: Send to worker for confirmation first, customer gets "venter på bekreftelse"
+        const label = APPOINTMENT_LABELS[company.industry] || 'time';
+        const dateText = customer.preferred_date ? `📅 ${customer.preferred_date}` : '';
+        const timeText = customer.preferred_time ? `⏰ ${customer.preferred_time}` : '';
+        
+        // SMS to worker: approve request
+        if (company.sms_notify_worker !== false && company.montour_phone) {
+          const workerMsg = `🔔 Ny ${label}-forespørsel!\nKunde: ${customer.name}\n${dateText}\n${timeText}\nTjeneste: ${customer.service_requested || '–'}\nTelefon: ${customer.phone}\n\nSvar BEKREFT ${customerId} for å godkjenne.`;
+          const { sendSms } = require('./sms-handler');
+          await sendSms(company.montour_phone, workerMsg.trim());
+        }
+        
+        // SMS to customer: waiting for confirmation
+        if (company.sms_confirm_customer !== false) {
+          const { sendSms } = require('./sms-handler');
+          const custMsg = `📋 ${company.name}\nHei ${customer.name || ''}! Din forespørsel om ${label} er mottatt.\n${dateText}\nVi bekrefter tid og dato så snart som mulig. Du hører fra oss! 😊`;
+          await sendSms(customer.phone, custMsg.trim());
+        }
+        
+        // Set status to pending
+        await db.run(`UPDATE customers SET confirmation_status = 'pending' WHERE id = $1`, customerId);
+        console.log(`[APPROVAL FLOW] Worker approval SMS sent for customer ${customerId}`);
+      } else {
+        // DIRECT FLOW: Send confirmation + notify worker immediately
+        await sendBookingConfirmation(customer, company);
+        await sendToMontour(customer, company);
+        await db.run(`UPDATE customers SET confirmation_status = 'confirmed' WHERE id = $1`, customerId);
+        console.log(`[SMS CASCADE] Triggered for manually created customer ${customerId}`);
+      }
+    }
+  } catch (smsErr) {
+    console.error('[SMS CASCADE] Error:', smsErr.message);
+    // Don't fail customer creation if SMS fails
+  }
+
+  res.json({ id: customerId });
+});
+
+// Full customer update (same as PATCH but explicit)
+app.put('/api/customers/:id', async (req, res) => {
+  const fields = req.body;
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const vals = Object.values(fields);
+  const idIdx = keys.length + 1;
+  await db.run(`UPDATE customers SET ${sets}, updated_at = NOW() WHERE id = $${idIdx}`, ...vals, req.params.id);
+  const customer = await db.get('SELECT * FROM customers WHERE id = $1', req.params.id);
+  res.json(customer);
+});
+
+// Delete customer
+app.delete('/api/customers/:id', async (req, res) => {
+  await db.run('DELETE FROM calls WHERE customer_id = $1', req.params.id);
+  await db.run('DELETE FROM customers WHERE id = $1', req.params.id);
+  res.json({ success: true });
+});
+
+// ===== WORKER APPROVAL / CONFIRMATION =====
+
+// Industry-specific appointment labels
+const APPOINTMENT_LABELS = {
+  planke: 'befaring', vaskeri: 'rengjøringstime', kosmetikk: 'behandling',
+  vvs: 'rørleggertime', elektriker: 'elektrikertime', maler: 'malertime',
+  antikviteter: 'vurdering', frisor: 'frisørtime', general: 'time'
+};
+
+// Get pending confirmations for a company
+app.get('/api/companies/:id/pending', async (req, res) => {
+  try {
+    const customers = await db.all(
+      `SELECT * FROM customers WHERE company_id = $1 AND confirmation_status = 'pending' AND status NOT IN ('Avbestilt','Fullført','Betalt') ORDER BY preferred_date ASC NULLS LAST, created_at ASC`,
+      req.params.id
+    );
+    res.json(customers);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get upcoming appointments (confirmed) for a company
+app.get('/api/companies/:id/upcoming', async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const customers = await db.all(
+      `SELECT * FROM customers WHERE company_id = $1 AND status IN ('Booket','Inngått avtale') AND (preferred_date >= $2 OR preferred_date IS NULL) ORDER BY preferred_date ASC NULLS LAST`,
+      [req.params.id, today]
+    );
+    res.json(customers);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Confirm a customer appointment (worker approves)
+app.post('/api/customers/:id/confirm', async (req, res) => {
+  try {
+    const customer = await db.get('SELECT * FROM customers WHERE id = $1', req.params.id);
+    if (!customer) return res.status(404).json({ error: 'Kunde ikke funnet' });
+    
+    const company = await db.get('SELECT * FROM companies WHERE id = $1', customer.company_id);
+    const confirmedBy = req.body.confirmed_by || 'CRM';
+    const confirmedDate = req.body.confirmed_date || null;
+    const confirmedTime = req.body.confirmed_time || null;
+    
+    // Build dynamic update
+    const updates = { confirmation_status: 'confirmed', confirmed_by: confirmedBy };
+    if (confirmedDate) updates.preferred_date = confirmedDate;
+    if (confirmedTime) updates.preferred_time = confirmedTime;
+    if (customer.status === 'Ny') updates.status = 'Booket';
+    
+    const setClauses = Object.keys(updates).map((k, i) => `${k} = $${i + 2}`).join(', ');
+    await db.run(`UPDATE customers SET ${setClauses}, confirmed_at = NOW() WHERE id = $1`, [req.params.id, ...Object.values(updates)]);
+    
+    // Send confirmation SMS to customer
+    if (company && company.sms_confirm_customer !== false) {
+      const label = APPOINTMENT_LABELS[company.industry] || 'time';
+      const dateText = confirmedDate || customer.preferred_date || '';
+      const timeText = confirmedTime || customer.preferred_time || '';
+      const body = `✅ Bekreftelse fra ${company.name}\nHei ${customer.name || ''}! Din ${label} er bekreftet.\n${dateText ? '📅 Dato: ' + dateText : ''}${timeText ? '\n⏰ Tid: ' + timeText : ''}\n${customer.service_requested ? 'Tjeneste: ' + customer.service_requested : ''}\nVi gleder oss til å se deg! 😊`;
+      
+      if (customer.phone) {
+        const { sendSms } = require('./sms-handler');
+        try { await sendSms(customer.phone, body.trim()); } catch(e) { console.error('Confirm SMS error:', e); }
+      }
+    }
+    
+    // Schedule reminder
+    if (company && company.sms_remind_customer !== false) {
+      const { scheduleReminder } = require('./sms-handler');
+      try { 
+        const updatedCustomer = await db.get('SELECT * FROM customers WHERE id = $1', req.params.id);
+        await scheduleReminder(updatedCustomer, company); 
+      } catch(e) { console.error('Reminder schedule error:', e); }
+    }
+    
+    res.json({ success: true, message: 'Bestilling bekreftet' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== AVAILABILITY MANAGEMENT =====
+
+// Get customer availability
+app.get('/api/customers/:id/availability', async (req, res) => {
+  const customer = await db.get('SELECT availability_json, excluded_dates, preferred_date, preferred_date_end, preferred_time FROM customers WHERE id = $1', req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke funnet' });
+  
+  let slots = [];
+  try { slots = JSON.parse(customer.availability_json || '[]'); } catch(e) {}
+  let excluded = [];
+  try { excluded = JSON.parse(customer.excluded_dates || '[]'); } catch(e) {}
+  
+  res.json({ slots, excluded, preferred_date: customer.preferred_date, preferred_date_end: customer.preferred_date_end, preferred_time: customer.preferred_time });
+});
+
+// Set customer availability (structured)
+app.put('/api/customers/:id/availability', async (req, res) => {
+  const { slots } = req.body;
+  await db.run('UPDATE customers SET availability_json = $1, updated_at = NOW() WHERE id = $2',
+    JSON.stringify(slots || []), req.params.id);
+  res.json({ success: true });
+});
+
+// Exclude a date from customer availability
+app.post('/api/customers/:id/exclude-date', async (req, res) => {
+  const { date } = req.body;
+  if (!date) return res.status(400).json({ error: 'Dato mangler' });
+  
+  const customer = await db.get('SELECT excluded_dates FROM customers WHERE id = $1', req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke funnet' });
+  
+  let excluded = [];
+  try { excluded = JSON.parse(customer.excluded_dates || '[]'); } catch(e) {}
+  
+  if (!excluded.includes(date)) {
+    excluded.push(date);
+    await db.run('UPDATE customers SET excluded_dates = $1, updated_at = NOW() WHERE id = $2',
+      JSON.stringify(excluded), req.params.id);
+  }
+  res.json({ success: true, excluded });
+});
+
+// Remove excluded date (re-include)
+app.delete('/api/customers/:id/exclude-date', async (req, res) => {
+  const { date } = req.body;
+  const customer = await db.get('SELECT excluded_dates FROM customers WHERE id = $1', req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Kunde ikke funnet' });
+  
+  let excluded = [];
+  try { excluded = JSON.parse(customer.excluded_dates || '[]'); } catch(e) {}
+  
+  excluded = excluded.filter(d => d !== date);
+  await db.run('UPDATE customers SET excluded_dates = $1, updated_at = NOW() WHERE id = $2',
+    JSON.stringify(excluded), req.params.id);
+  res.json({ success: true, excluded });
+});
+
+// Avbestill en bestilling
+app.post('/api/customers/:id/cancel', async (req, res) => {
+  await db.run(`UPDATE customers SET cancelled = 1, cancelled_at = NOW(), status = 'Avbestilt', updated_at = NOW() WHERE id = $1`,
+    req.params.id);
+  res.json({ success: true, message: 'Bestilling avbestilt' });
+});
+
+// Undo cancellation
+app.post('/api/customers/:id/uncancel', async (req, res) => {
+  await db.run(`UPDATE customers SET cancelled = 0, cancelled_at = NULL, status = 'Booket', updated_at = NOW() WHERE id = $1`,
+    req.params.id);
+  res.json({ success: true, message: 'Avbestilling angra' });
+});
+
+// Get all calls for a customer (with audio URLs)
+app.get('/api/customers/:id/calls', async (req, res) => {
+  const calls = await db.all(`
+    SELECT * FROM calls WHERE customer_id = $1 ORDER BY created_at DESC
+  `, req.params.id);
+  res.json(calls);
+});
+
+// Get all calls for a phone number (across companies)
+app.get('/api/calls/by-phone/:phone', async (req, res) => {
+  const calls = await db.all(`
+    SELECT c.*, cu.name as customer_name, co.name as company_name
+    FROM calls c
+    LEFT JOIN customers cu ON c.customer_id = cu.id
+    LEFT JOIN companies co ON c.company_id = co.id
+    WHERE cu.phone = $1
+    ORDER BY c.created_at DESC
+  `, req.params.phone);
+  res.json(calls);
+});
+
+// ===============================================================
+// SAMTALE-ANALYSE API
+// ===============================================================
+
+// Hent alle samtaler med analyser
+app.get('/api/calls', async (req, res) => {
+  const companyId = req.query.company_id;
+  let calls;
+  if (companyId) {
+    calls = await db.all(`
+      SELECT c.*, cu.name as customer_name, co.name as company_name
+      FROM calls c
+      LEFT JOIN customers cu ON c.customer_id = cu.id
+      LEFT JOIN companies co ON c.company_id = co.id
+      WHERE c.company_id = $1
+      ORDER BY c.created_at DESC
+    `, companyId);
+  } else {
+    calls = await db.all(`
+      SELECT c.*, cu.name as customer_name, co.name as company_name
+      FROM calls c
+      LEFT JOIN customers cu ON c.customer_id = cu.id
+      LEFT JOIN companies co ON c.company_id = co.id
+      ORDER BY c.created_at DESC
+    `);
+  }
+  res.json(calls);
+});
+
+// Hent analyse for en spesifikk samtale
+app.get('/api/calls/:id/analysis', async (req, res) => {
+  const call = await db.get('SELECT * FROM calls WHERE id = $1', req.params.id);
+  if (!call) return res.status(404).json({ error: 'Samtale ikke funnet' });
+  
+  try {
+    const analysis = JSON.parse(call.analysis_json || '{}');
+    res.json({ 
+      callId: call.id, 
+      transcript: call.transcript,
+      audioUrl: call.audio_url,
+      analysis,
+      callOutcome: call.call_outcome,
+      createdAt: call.created_at
+    });
+  } catch (e) {
+    res.json({ callId: call.id, transcript: call.transcript, analysis: {} });
+  }
+});
+
+// Kjør forbedringsrapport for alle nylige samtaler
+app.post('/api/calls/improvement-report', async (req, res) => {
+  try {
+    const CallAnalyzer = require('./call-analyzer');
+    const analyzer = new CallAnalyzer(process.env.OPENAI_API_KEY);
+    
+    // Hent siste 20 samtaler med analyser
+    const calls = await db.all(`
+      SELECT * FROM calls 
+      WHERE analysis_json IS NOT NULL AND analysis_json != '{}' 
+      ORDER BY created_at DESC LIMIT 20
+    `);
+    
+    if (calls.length === 0) {
+      return res.json({ message: 'Ingen analyserte samtaler funnet ennå' });
+    }
+    
+    const analyses = calls.map(c => ({
+      callId: c.id,
+      companyName: c.company_name || 'Ukjent',
+      timestamp: c.created_at,
+      analysis: JSON.parse(c.analysis_json || '{}')
+    }));
+    
+    const report = await analyzer.generateImprovementReport(analyses);
+    res.json(report);
+  } catch (err) {
+    console.error('Forbedringsrapport feilet:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Re-analyser en samtale manuelt
+app.post('/api/calls/:id/reanalyze', async (req, res) => {
+  try {
+    const call = await db.get(`
+      SELECT c.*, co.name as company_name 
+      FROM calls c LEFT JOIN companies co ON c.company_id = co.id 
+      WHERE c.id = $1
+    `, req.params.id);
+    if (!call) return res.status(404).json({ error: 'Samtale ikke funnet' });
+    
+    let transcript = call.transcript;
+    
+    // Hvis ingen transkripsjon men vi har lyd — transkriber med Whisper
+    if (!transcript && call.audio_url) {
+      const CallAnalyzer = require('./call-analyzer');
+      const analyzer = new CallAnalyzer(process.env.OPENAI_API_KEY);
+      const result = await analyzer.transcribeRecording(call.audio_url);
+      if (result) {
+        transcript = result.text;
+        await db.run('UPDATE calls SET transcript = $1 WHERE id = $2', transcript, call.id);
+      }
+    }
+    
+    if (!transcript) return res.status(400).json({ error: 'Ingen transkripsjon eller lydopptak tilgjengelig' });
+    
+    const CallAnalyzer = require('./call-analyzer');
+    const analyzer = new CallAnalyzer(process.env.OPENAI_API_KEY);
+    const analysis = await analyzer.analyzeSingleCall(transcript, call.company_name || 'Ukjent');
+    
+    if (analysis) {
+      await db.run('UPDATE calls SET analysis_json = $1 WHERE id = $2', JSON.stringify(analysis), call.id);
+      res.json({ callId: call.id, analysis });
+    } else {
+      res.status(500).json({ error: 'Analyse feilet' });
+    }
+  } catch (err) {
+    console.error('Re-analyse feilet:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === AUTO-LEARNING ENDPOINTS ===
+app.get('/api/improvements/:companyId', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not available' });
+    const result = await pool.query(
+      'SELECT * FROM coe_prompt_improvements WHERE company_id = $1 ORDER BY created_at DESC',
+      [req.params.companyId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/improvements/call/:callId', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not available' });
+    const improvements = await getImprovementsForCall(pool, parseInt(req.params.callId));
+    res.json(improvements);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.patch('/api/improvements/:id/deactivate', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not available' });
+    await deactivateImprovement(pool, parseInt(req.params.id));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/improvements/:companyId/active', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not available' });
+    const improvements = await getActiveImprovements(pool, parseInt(req.params.companyId));
+    res.json(improvements);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===== TRANSKRIPSJON + INFO-UTTREKK ENDEPUNKTER =====
+
+// Manuell transkripsjon av en samtale
+app.post('/api/calls/:id/transcribe', async (req, res) => {
+  try {
+    const call = await db.get('SELECT * FROM calls WHERE id = $1', req.params.id);
+    if (!call) return res.status(404).json({ error: 'Samtale ikke funnet' });
+    if (!call.audio_url) return res.status(400).json({ error: 'Ingen lydopptak tilgjengelig for denne samtalen' });
+    
+    const result = await transcribeFullRecording(call.audio_url, call.id);
+    if (result) {
+      res.json({ 
+        callId: call.id, 
+        transcript: result.transcript, 
+        extractedInfo: result.extractedInfo,
+        message: 'Transkripsjon og info-uttrekk fullført' 
+      });
+    } else {
+      res.status(500).json({ error: 'Transkripsjon feilet' });
+    }
+  } catch (err) {
+    console.error('Transkripsjon-endpoint feilet:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hent transkripsjon + uttrekket info for en samtale
+app.get('/api/calls/:id/transcript', async (req, res) => {
+  try {
+    const call = await db.get('SELECT id, transcript, full_audio_transcript, extracted_info, audio_url FROM calls WHERE id = $1', req.params.id);
+    if (!call) return res.status(404).json({ error: 'Samtale ikke funnet' });
+    
+    let extractedInfo = {};
+    try { extractedInfo = JSON.parse(call.extracted_info || '{}'); } catch(e) {}
+    
+    res.json({
+      callId: call.id,
+      conversationTranscript: call.transcript,
+      fullAudioTranscript: call.full_audio_transcript,
+      extractedInfo,
+      hasAudio: !!call.audio_url
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Transkriber alle samtaler som har lyd men mangler transkripsjon
+app.post('/api/calls/transcribe-all', async (req, res) => {
+  try {
+    const calls = await db.all(`
+      SELECT id, audio_url FROM calls 
+      WHERE audio_url IS NOT NULL 
+      AND (full_audio_transcript IS NULL OR full_audio_transcript = '')
+      ORDER BY id DESC
+      LIMIT 20
+    `);
+    
+    if (!calls.length) return res.json({ message: 'Ingen samtaler trenger transkripsjon', count: 0 });
+    
+    // Start transcription in background
+    let count = 0;
+    for (const call of calls) {
+      transcribeFullRecording(call.audio_url, call.id).then(() => count++).catch(() => {});
+    }
+    
+    res.json({ message: `Transkriberer ${calls.length} samtaler i bakgrunnen`, count: calls.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Hent bestillinger for kalendervisning
+app.get('/api/bookings', async (req, res) => {
+  const { start, end, company_id } = req.query;
+  let sql = `
+    SELECT c.*, co.name as company_name, co.industry as company_industry
+    FROM customers c
+    LEFT JOIN companies co ON c.company_id = co.id
+    WHERE c.preferred_date IS NOT NULL
+  `;
+  const params = [];
+  let paramIdx = 1;
+  if (start) { sql += ` AND c.preferred_date >= $${paramIdx++}`; params.push(start); }
+  if (end) { sql += ` AND c.preferred_date <= $${paramIdx++}`; params.push(end); }
+  if (company_id) { sql += ` AND c.company_id = $${paramIdx++}`; params.push(company_id); }
+  sql += ' ORDER BY c.preferred_date ASC, c.preferred_time ASC';
+  
+  res.json(await db.all(sql, ...params));
+});
+
+// Get all companies
+app.get('/api/companies', async (req, res) => {
+  const companies = await db.all('SELECT * FROM companies ORDER BY name');
+  res.json(companies);
+});
+
+// Get company with stats
+app.get('/api/companies/:id', async (req, res) => {
+  const company = await db.get('SELECT * FROM companies WHERE id = $1', req.params.id);
+  if (!company) return res.status(404).json({ error: 'Not found' });
+  const stats = await db.get(`
+    SELECT 
+      COUNT(*) as total_customers,
+      SUM(CASE WHEN status = 'Booket' THEN 1 ELSE 0 END) as booked,
+      SUM(CASE WHEN status = 'Fullført' THEN 1 ELSE 0 END) as completed,
+      SUM(CASE WHEN cancelled = 1 THEN 1 ELSE 0 END) as cancelled,
+      SUM(CASE WHEN price IS NOT NULL THEN price ELSE 0 END) as total_revenue
+    FROM customers WHERE company_id = $1
+  `, req.params.id);
+  res.json({ ...company, stats });
+});
+
+// Create company
+app.post('/api/companies', async (req, res) => {
+  const { name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, logo_url, requires_worker_approval } = req.body;
+  
+  // Auto-generate coadmin ID: count existing companies + 1
+  const countRow = await db.get('SELECT COUNT(*) as count FROM companies');
+  const coadminId = `coadmin${countRow.count + 1}`;
+  
+  // Auto-generate password if not provided
+  const autoPassword = login_password || generatePassword();
+  
+  // Auto-generate greeting if not provided
+  const autoGreeting = greeting || `God dag, du snakker nå med ${name} sin KI-assistent. Det vil bli gjort opptak av samtalen for utviklingsformål. Hva kan jeg hjelpe deg med i dag?`;
+
+  // Auto-generate industry questions from auto-company-generator
+  const autoCompany = require('./auto-company-generator');
+  const generated = autoCompany.generateCompanyConfig(name, industry);
+  
+  const result = await db.run(
+    `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+    name, industry, phone, autoGreeting, montour_phone, autoPassword, boss_phone || null, boss_email || null,
+    sms_notify_worker !== false, sms_confirm_customer !== false, sms_remind_customer !== false,
+    JSON.stringify(generated.industryQuestions || []),
+    JSON.stringify(generated.followUpTriggers || {}),
+    JSON.stringify(generated.standardRoutines || []),
+    generated.smsTemplate || null,
+    logo_url || null,
+    requires_worker_approval === true
+  );
+  
+  res.json({ 
+    id: result.rows[0].id, 
+    coadminId,
+    login_password: autoPassword,
+    greeting: autoGreeting,
+    generated: {
+      industryQuestions: generated.industryQuestions || [],
+      followUpTriggers: generated.followUpTriggers || {},
+      standardRoutines: generated.standardRoutines || [],
+    }
+  });
+});
+
+// Generate random password
+function generatePassword() {
+  const words = ['sol','fjell','fjord','skog','strand','nord','is','bre','elv','dal','lyn','storm','bjørk','gran','furu'];
+  const w1 = words[Math.floor(Math.random()*words.length)];
+  const w2 = words[Math.floor(Math.random()*words.length)];
+  const num = Math.floor(Math.random()*900)+100;
+  return w1 + w2 + num;
+}
+
+// Update company
+app.patch('/api/companies/:id', async (req, res) => {
+  const fields = req.body;
+  const keys = Object.keys(fields);
+  const sets = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
+  const vals = Object.values(fields);
+  const idIdx = keys.length + 1;
+  await db.run(`UPDATE companies SET ${sets} WHERE id = $${idIdx}`, ...vals, req.params.id);
+  res.json({ success: true });
+});
+
+// Delete company
+app.delete('/api/companies/:id', async (req, res) => {
+  await db.run('DELETE FROM companies WHERE id = $1', req.params.id);
+  res.json({ success: true });
+});
+
+// Get conversion stats
+app.get('/api/stats', async (req, res) => {
+  // Total calls (from calls table)
+  const totalCallsRow = await db.get('SELECT COUNT(*) as count FROM calls');
+  const totalCalls = parseInt(totalCallsRow.count);
+  
+  // Call outcomes
+  const bookingCallsRow = await db.get("SELECT COUNT(*) as count FROM calls WHERE call_outcome = 'booking'");
+  const bookingCalls = parseInt(bookingCallsRow.count);
+  const noBookingRow = await db.get("SELECT COUNT(*) as count FROM calls WHERE call_outcome IN ('no_booking', 'hung_up', 'declined')");
+  const noBookingCalls = parseInt(noBookingRow.count);
+  
+  // Customer stats
+  const totalRow = await db.get('SELECT COUNT(*) as count FROM customers');
+  const total = parseInt(totalRow.count);
+  const booketRow = await db.get("SELECT COUNT(*) as count FROM customers WHERE status IN ('Booket', 'Inngått avtale', 'Fullført', 'Betalt')");
+  const booket = parseInt(booketRow.count);
+  const inngattRow = await db.get("SELECT COUNT(*) as count FROM customers WHERE status = 'Inngått avtale'");
+  const inngatt = parseInt(inngattRow.count);
+  const fullfortRow = await db.get("SELECT COUNT(*) as count FROM customers WHERE status IN ('Fullført', 'Betalt')");
+  const fullfort = parseInt(fullfortRow.count);
+  const betaltRow = await db.get("SELECT COUNT(*) as count FROM customers WHERE status = 'Betalt'");
+  const betalt = parseInt(betaltRow.count);
+  const avbestiltRow = await db.get("SELECT COUNT(*) as count FROM customers WHERE status = 'Avbestilt'");
+  const avbestilt = parseInt(avbestiltRow.count);
+  
+  res.json({
+    totalCalls,
+    bookingCalls,
+    noBookingCalls,
+    bookingCallRate: totalCalls > 0 ? ((bookingCalls / totalCalls) * 100).toFixed(1) : 0,
+    total,
+    booket,
+    inngatt,
+    fullfort,
+    betalt,
+    avbestilt,
+    bookingRate: total > 0 ? ((booket / total) * 100).toFixed(1) : 0,
+    fullforingsRate: booket > 0 ? ((fullfort / booket) * 100).toFixed(1) : 0,
+    betalingsRate: booket > 0 ? ((betalt / booket) * 100).toFixed(1) : 0,
+  });
+});
+
+// Revenue stats
+app.get('/api/stats/revenue', async (req, res) => {
+  const byMonth = await db.all(`
+    SELECT TO_CHAR(created_at, 'YYYY-MM') as month, 
+           SUM(price) as revenue, COUNT(*) as count
+    FROM customers WHERE price > 0
+    GROUP BY month ORDER BY month DESC LIMIT 12
+  `);
+  
+  const byCompany = await db.all(`
+    SELECT co.name, SUM(c.price) as revenue, COUNT(*) as count
+    FROM customers c JOIN companies co ON c.company_id = co.id
+    WHERE c.price > 0
+    GROUP BY c.company_id, co.name ORDER BY revenue DESC
+  `);
+  
+  const byMontour = await db.all(`
+    SELECT montour_name, SUM(price) as revenue, COUNT(*) as count
+    FROM customers WHERE price > 0 AND montour_name IS NOT NULL
+    GROUP BY montour_name ORDER BY revenue DESC
+  `);
+  
+  res.json({ byMonth, byCompany, byMontour });
+});
+
+// ===============================================================
+// 6. CHAT API - Text-based AI conversation (same GPT-4o as calls)
+// ===============================================================
+const chatSessions = new Map();
+
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { companyId, sessionId, message } = req.body;
+
+    if (!companyId) {
+      return res.status(400).json({ error: 'companyId is required' });
+    }
+
+    const company = await db.get('SELECT * FROM companies WHERE id = $1', companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    // New session — return greeting
+    if (!sessionId) {
+      const newSessionId = uuidv4();
+      const greeting = company.greeting || `Hei! Velkomen til ${company.name}. Kva kan eg hjelpe deg med?`;
+      const session = {
+        id: newSessionId,
+        company_id: companyId,
+        state: 'greeting',
+        collected_data: '{}',
+        conversation_history: JSON.stringify([
+          { role: 'assistant', content: JSON.stringify({ response: greeting, collected: {}, complete: false, summary: null }) }
+        ])
+      };
+      chatSessions.set(newSessionId, session);
+
+      return res.json({
+        sessionId: newSessionId,
+        response: greeting,
+        collectedData: {},
+        complete: false
+      });
+    }
+
+    // Existing session — process message
+    let session = chatSessions.get(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    console.log('Chat processing message for company:', company.name, 'industry:', company.industry);
+    console.log('Session data:', { collected: session.collected_data, historyLen: JSON.parse(session.conversation_history || '[]').length });
+    // Load active auto-learned improvements for this company
+    const chatImprovements = pool ? await getActiveImprovements(pool, company.id) : [];
+    const result = await processMessage(company, session, message, chatImprovements);
+    console.log('Chat result:', { response: result.response?.substring(0, 100), complete: result.complete });
+
+    // Update session in memory
+    session.collected_data = JSON.stringify(result.collectedData);
+    session.conversation_history = JSON.stringify(result.conversationHistory);
+    session.state = result.complete ? 'complete' : 'collecting';
+    chatSessions.set(sessionId, session);
+
+    // If conversation is complete — save customer to DB and send SMS
+    let savedCustomer = null;
+    if (result.complete) {
+      try {
+        const data = result.collectedData;
+        const industryFields = {};
+        for (const [key, val] of Object.entries(data)) {
+          if (!['navn', 'adresse', 'telefon', 'dato', 'klokkeslett', 'problem'].includes(key)) {
+            industryFields[key] = val;
+          }
+        }
+        const postalMatch = (data.adresse || '').match(/\b(\d{4})\b/);
+        const postalCode = postalMatch ? postalMatch[1] : null;
+
+        const customerResult = await db.run(`
+          INSERT INTO customers (company_id, name, phone, address, preferred_date, preferred_time, postal_code, service_requested, status, industry_data, comment)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Booket', $9, $10)
+          RETURNING id
+        `,
+          company.id,
+          data.navn || '',
+          data.telefon || '',
+          data.adresse || '',
+          data.dato || '',
+          data.klokkeslett || '',
+          postalCode,
+          data.problem || result.summary || '',
+          JSON.stringify(industryFields),
+          result.summary || ''
+        );
+
+        savedCustomer = { id: customerResult.rows[0].id };
+
+        // Parse and save structured availability
+        const availText = [data.dato, data.klokkeslett].filter(Boolean).join(' ');
+        const availSlots = parseAvailabilityText(availText);
+        if (availSlots.length > 0) {
+          await db.run('UPDATE customers SET availability_json = $1 WHERE id = $2',
+            JSON.stringify(availSlots), savedCustomer.id);
+        }
+
+        // Send SMS to montør if company has one
+        if (company.montour_phone) {
+          const customer = await db.get('SELECT * FROM customers WHERE id = $1', savedCustomer.id);
+          await sendToMontour(customer, company);
+        }
+
+        // Send bestillingsbekreftelse til kunden
+        if (savedCustomer.phone) {
+          const customer = await db.get('SELECT * FROM customers WHERE id = $1', savedCustomer.id);
+          await sendBookingConfirmation(customer, company);
+        }
+
+        console.log(`✅ Chat: Customer saved (ID: ${savedCustomer.id}) and SMS sent`);
+      } catch (saveErr) {
+        console.error('❌ Chat: Failed to save customer:', saveErr.message);
+      }
+    }
+
+    res.json({
+      sessionId,
+      response: result.response,
+      collectedData: result.collectedData || {},
+      complete: result.complete || false,
+      customerId: savedCustomer?.id || null
+    });
+  } catch (err) {
+    console.error('Chat API error:', err?.message || err);
+    res.status(500).json({ error: 'Internal server error', detail: err?.message || 'unknown' });
+  }
+});
+
+// ===============================================================
+// 6b. OPENAI DEBUG TEST
+// ===============================================================
+app.get('/api/test-openai', async (req, res) => {
+  try {
+    const OpenAI = require('openai');
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'Du er en test-assistent. Svar kort med JSON: {"response": "Hei!", "collected": {}, "complete": false, "summary": null}' },
+        { role: 'user', content: 'Hei' }
+      ],
+      temperature: 0.7,
+      max_tokens: 200,
+      response_format: { type: 'json_object' }
+    });
+    res.json({ success: true, result: completion.choices[0].message.content });
+  } catch(e) {
+    res.json({ success: false, error: e?.message, status: e?.status, code: e?.code, type: e?.type });
+  }
+});
+
+// ===============================================================
+// 7. AUTH API - Login for CRM
+// ===============================================================
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'coeadmin2024';
+
+app.post('/api/auth/login', async (req, res) => {
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ success: false, error: 'Password is required' });
+  }
+
+  // Check admin password
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ success: true, companyId: null, companyName: 'Administrator', isAdmin: true });
+  }
+
+  // Check company passwords
+  const companies = await db.all("SELECT id, name, login_password FROM companies WHERE login_password IS NOT NULL AND login_password != ''");
+  for (const company of companies) {
+    if (company.login_password === password) {
+      return res.json({ success: true, companyId: company.id, companyName: company.name, isAdmin: false });
+    }
+  }
+
+  return res.status(401).json({ success: false, error: 'Feil passord' });
+});
+
+// ===============================================================
+// START SERVER
+// ===============================================================
+(async () => {
+  try {
+    console.log('🚀 Starting Coe AI Voice Assistant...');
+    await initDatabase();
+    console.log('✅ Database ready!');
+    
+    // Start reminder scheduler
+    startReminderScheduler(db);
+  } catch (err) {
+    console.error('⚠️ Database init failed:', err.message);
+    console.error('   Server will start anyway — DB features may not work');
+  }
+  
+  app.listen(PORT, () => {
+    console.log(`
+  ╔══════════════════════════════════════════╗
+  ║   🤖 Coe AI Voice Assistant v2.0       ║
+  ║   Server running on port ${PORT}            ║
+  ║                                          ║
+  ║   Webhooks:                              ║
+  ║   POST /twilio/voice    - Incoming calls ║
+  ║   POST /twilio/sms      - Incoming SMS   ║
+  ║   POST /twilio/recording - Recordings    ║
+  ║                                          ║
+  ║   API:                                   ║
+  ║   GET  /api/customers   - List customers ║
+  ║   GET  /api/customers/search - Search    ║
+  ║   GET  /api/bookings    - Calendar       ║
+  ║   GET  /api/stats       - Stats          ║
+  ║   GET  /api/stats/revenue - Revenue      ║
+  ║   GET  /health          - Health check   ║
+  ╚══════════════════════════════════════════╝
+    `);
+  });
+})();
