@@ -2413,7 +2413,7 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(403).json({ success: false, error: 'Kontoen er sperret etter 2 forsøk. Kontakt admin for å oppheve.', locked: true });
   }
   _lockoutMap.set(ip, state);
-  return res.status(401).json({ success: false, error: `Feil passord (${2 - state.attempts} forsøk igjen)` });
+  return res.status(401).json({ success: false, error: `Feil passord (${2 - state.attempts} forsøk gjenstår)` });
 });
 
 // Admin unlock endpoint — resets lockout for all IPs

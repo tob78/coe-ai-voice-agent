@@ -285,12 +285,20 @@
     #sidebar .sidebar-footer, #sidebar [onclick*="logout"] {
       visibility: visible !important; display: block !important;
     }
-    .sidebar { overflow-y: auto !important; }
+    .sidebar { overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; max-height: 100vh !important; }
+    .sidebar .nav-item { padding: .4rem .75rem !important; font-size: .78rem !important; margin: .1rem .4rem !important; }
+    .sidebar h2 { font-size: 1rem !important; }
+    .sidebar p { font-size: .65rem !important; }
+    #sidebar-confirmed { max-height: 120px !important; overflow-y: auto !important; }
+    #sidebar-confirmed .nav-item, #sidebar-confirmed > div > div { font-size: .75rem !important; padding: .3rem .5rem !important; }
     #sidebar > div:last-child, #sidebar [style*="margin-top:auto"] {
       position: sticky !important; bottom: 0 !important; 
-      background: var(--bg2) !important; padding: .5rem !important;
+      background: var(--bg2) !important; padding: .4rem !important;
       border-top: 1px solid var(--border) !important;
       z-index: 5 !important;
+    }
+    #sidebar > div:last-child button, #sidebar [style*="margin-top:auto"] button {
+      font-size: .75rem !important; padding: .35rem .5rem !important; min-height: 30px !important;
     }
   }
 
@@ -1083,17 +1091,7 @@ async function renderCompanyDetail(id) {
       <!-- 1. Pending -->
       <div id="cd-pending" style="margin-bottom:1rem;"></div>
 
-      <!-- 2. Source boxes: Telefon / Chatbot / Meldinger — side by side -->
-      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:1rem; margin-bottom:1.5rem;">
-        <div id="cd-recent-callers"></div>
-        <div id="cd-recent-chatbot"></div>
-        <div id="cd-recent-messages"></div>
-      </div>
-
-      <!-- 3. Alle kontakter samlet -->
-      <div id="cd-all-contacts" style="margin-bottom:1.5rem;"></div>
-
-      <!-- 2. Kommende timer -->
+      <!-- 2. Kommende timer (rett etter pending) -->
       <div id="cd-upcoming" style="margin-bottom:1.5rem;"></div>
 
       <!-- 3. Stats row -->
@@ -1180,10 +1178,6 @@ async function renderCompanyDetail(id) {
     loadUpcomingAppointments(id, c.industry, customers);
 
     // Load recent callers (3 nyligste, utvidbar)
-    renderRecentCallers(customers);
-    renderRecentChatbot(customers);
-    renderRecentMessages(customers);
-    renderAllContacts(customers);
 
     // Load completed customers
     loadCompletedCustomers(customers);
@@ -1226,7 +1220,11 @@ function filterCompanyCustomers(companyId) {
 
   let filtered = customers;
   if (_currentSourceFilter) {
-    filtered = filtered.filter(c => (c.source||'Telefon') === _currentSourceFilter);
+    filtered = filtered.filter(c => {
+      const src = c.source || 'Telefon';
+      if (_currentSourceFilter === 'Melding') return src === 'Melding' || src === 'Manuell';
+      return src === _currentSourceFilter;
+    });
   }
   if (q) {
     filtered = filtered.filter(c =>
@@ -1253,8 +1251,9 @@ function renderCompanyCustomerTable(custs) {
   t.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:.75rem;">` +
   custs.map(c => {
     const src = c.source||'Telefon';
-    const srcIcon = src==='Chatbot' ? '💬' : src==='Manuell' ? '✋' : '📞';
-    const srcColor = src==='Chatbot' ? '#8b5cf6' : src==='Manuell' ? '#f59e0b' : '#3b82f6';
+    const srcLabel = src==='Chatbot' ? 'chatbot-kunde' : (src==='Manuell'||src==='Melding') ? 'melding-kunde' : 'telefon-kunde';
+    const srcIcon = src==='Chatbot' ? '💬' : (src==='Manuell'||src==='Melding') ? '📱' : '📞';
+    const srcColor = src==='Chatbot' ? '#8b5cf6' : (src==='Manuell'||src==='Melding') ? '#f59e0b' : '#3b82f6';
     const callCount = c.call_count || 0;
     const svc = c.service_requested || '–';
     const date = fmtDate(c.preferred_date || c.appointment_date);
@@ -1375,7 +1374,7 @@ function recentCallerRow(c) {
   const dt = c.created_at ? fmtDateTime(c.created_at) : '–';
   return `<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor='#60a5fa'" onmouseout="this.style.borderColor='var(--border)'" onclick="navigate('#/kunde/${c.id}')">
     <div style="flex:1; min-width:0;">
-      <div style="font-weight:600;">${errorWarning(c)} ${c.name || 'Ukjent'}</div>
+      <div style="font-weight:600;">${errorWarning(c)} ${c.name || 'Ukjent'} <span style="font-size:.65rem; color:${srcColor}; font-weight:400;">(${srcLabel})</span></div>
       <div style="font-size:.75rem; color:var(--text3); margin-top:.125rem;">📅 ${dt} • 📞 ${fmtPhone(c.phone)} ${c.service_requested ? '• ' + c.service_requested : ''}</div>
     </div>
     <div>${statusBadge(c.status)}</div>
