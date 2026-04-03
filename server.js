@@ -138,7 +138,7 @@ const improvementsCache = new Map(); // companyId → { data, timestamp }
 const CACHE_TTL = 120000; // 2 minutes
 
 // === SMS RATE LIMITER (prevents Twilio 63038 spam) ===
-const smsRateLimit = { count: 0, date: new Date().toDateString(), maxPerDay: 50, blocked: false };
+const smsRateLimit = { count: 0, date: new Date().toDateString(), maxPerDay: 250, blocked: false };
 function canSendSMS() {
   const today = new Date().toDateString();
   if (smsRateLimit.date !== today) { smsRateLimit.count = 0; smsRateLimit.date = today; smsRateLimit.blocked = false; }

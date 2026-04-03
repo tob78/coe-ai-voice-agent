@@ -597,7 +597,7 @@ function fmtDuration(seconds) {
 }
 function errorWarning(c) { return c.error_flag ? '<span class="error-warning" title="' + (c.error_details||'Feil under samtale') + '">⚠️ SE GJENNOM</span>' : ''; }
 function statusBadge(s) {
-  const map = { 'Booket':'badge-green','Inngått avtale':'badge-purple','Fullført':'badge-blue','Betalt':'badge-yellow','Avbestilt':'badge-red','Ikke møtt opp':'badge-orange','Ny':'badge-gray' };
+  const map = { 'Booket':'badge-green','Fullført':'badge-blue','Betalt':'badge-yellow','Avbestilt':'badge-red','Ikke møtt opp':'badge-orange','Ny':'badge-gray' };
   return `<span class="badge ${map[s]||'badge-gray'}">${s||'Ukjent'}</span>`;
 }
 function spinner() { return '<div class="spinner"></div>'; }
@@ -771,7 +771,7 @@ async function renderDashboard() {
     } else {
       total = allCustomers.length;
       booked = allCustomers.filter(c => c.status === 'Booket').length;
-      inngatt = allCustomers.filter(c => c.status === 'Inngått avtale').length;
+      // "Inngått avtale" fjernet v3.9.66
       completed = allCustomers.filter(c => c.status === 'Fullført').length;
       paid = allCustomers.filter(c => c.status === 'Betalt').length;
       avbestilt = allCustomers.filter(c => c.status === 'Avbestilt').length;
@@ -800,8 +800,7 @@ async function renderDashboard() {
           <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket',\'chatbot\')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">💬 Via chatbot</p><p style="font-size:1.5rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${allCustomers.filter(c=>c.source==='Chatbot'&&c.status==='Booket').length}</p></div>
           <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket','melding')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">✉️ Via melding</p><p style="font-size:1.5rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${allCustomers.filter(c=>c.source==='Manuell'&&c.status==='Booket').length}</p></div>
           <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('confirmed')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">☑️ Bekreftet</p><p style="font-size:1.5rem; font-weight:700; color:#34d399; margin-top:.25rem;">${allCustomers.filter(c=>c.confirmation_status==='confirmed').length}</p></div>
-          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Inngått avtale')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">🤝 Inngått avtale</p><p style="font-size:1.5rem; font-weight:700; color:#a78bfa; margin-top:.25rem;">${inngatt}</p></div>
-          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Fullført')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">💰 Fullført & betalt</p><p style="font-size:1.5rem; font-weight:700; color:#fbbf24; margin-top:.25rem;">${completed + paid}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Fullført')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">✅ Fullført</p><p style="font-size:1.5rem; font-weight:700; color:#60a5fa; margin-top:.25rem;">${completed}</p></div>
         </div>
       </div>
       <!-- MASTER: Ikke fullført -->
@@ -990,7 +989,7 @@ async function renderCompanyDetail(id) {
 
     const totalCust = customers.length;
     const booketCount = customers.filter(x => x.status === 'Booket').length;
-    const inngattCount = customers.filter(x => x.status === 'Inngått avtale').length;
+    // "Inngått avtale" fjernet v3.9.66
     const fullfortCount = customers.filter(x => x.status === 'Fullført').length;
     const betaltCount = customers.filter(x => x.status === 'Betalt').length;
     const avbestiltCount = customers.filter(x => x.status === 'Avbestilt').length;
@@ -1114,10 +1113,7 @@ async function renderCompanyDetail(id) {
           <p style="font-size:.75rem; color:var(--text3);">Booket</p>
           <p style="font-size:1.5rem; font-weight:700; color:#4ade80;">${booketCount}</p>
         </div>
-        <div class="stat-card stat-card-btn" style="padding:1rem; text-align:center;" onclick="document.getElementById('cd-status').value='Inngått avtale';filterCompanyCustomers(${id})">
-          <p style="font-size:.75rem; color:var(--text3);">Inngått avtale</p>
-          <p style="font-size:1.5rem; font-weight:700; color:#a78bfa;">${inngattCount}</p>
-        </div>
+
         <div class="stat-card stat-card-btn" style="padding:1rem; text-align:center;" onclick="document.getElementById('cd-status').value='Fullført';filterCompanyCustomers(${id})">
           <p style="font-size:.75rem; color:var(--text3);">Fullført</p>
           <p style="font-size:1.5rem; font-weight:700; color:#60a5fa;">${fullfortCount}</p>
@@ -1154,7 +1150,6 @@ async function renderCompanyDetail(id) {
             <option value="">Alle statuser</option>
             <option value="Ny">Ny</option>
             <option value="Booket">Booket</option>
-            <option value="Inngått avtale">Inngått avtale</option>
             <option value="Fullført">Fullført</option>
             <option value="Betalt">Betalt</option>
             <option value="Avbestilt">Avbestilt</option>
@@ -1810,7 +1805,6 @@ async function openEditCustomerModal(id) {
           <select id="edc-status">
             <option value="Ny" ${c.status==='Ny'?'selected':''}>Ny</option>
             <option value="Booket" ${c.status==='Booket'?'selected':''}>Booket</option>
-            <option value="Inngått avtale" ${c.status==='Inngått avtale'?'selected':''}>Inngått avtale</option>
             <option value="Fullført" ${c.status==='Fullført'?'selected':''}>Fullført</option>
             <option value="Betalt" ${c.status==='Betalt'?'selected':''}>Betalt</option>
             <option value="Avbestilt" ${c.status==='Avbestilt'?'selected':''}>Avbestilt</option>
@@ -1961,7 +1955,6 @@ function openNewCustomerModal(companyId, industry) {
         <select id="nc-status">
           <option value="Ny">Ny</option>
           <option value="Booket">Booket</option>
-          <option value="Inngått avtale">Inngått avtale</option>
           <option value="Fullført">Fullført</option>
           <option value="Betalt">Betalt</option>
         </select>
@@ -2698,7 +2691,7 @@ async function renderCustomerDetail(id) {
           <div class="stat-card">
             <h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Rediger</h3>
             <div style="display:flex; flex-direction:column; gap:.75rem;">
-              <div><label style="font-size:.75rem; font-weight:500; color:var(--text3);">Status</label><select id="ed-status" style="margin-top:.25rem;"><option>Ny</option><option>Booket</option><option>Inngått avtale</option><option>Fullført</option><option>Betalt</option></select></div>
+              <div><label style="font-size:.75rem; font-weight:500; color:var(--text3);">Status</label><select id="ed-status" style="margin-top:.25rem;"><option>Ny</option><option>Booket</option><option>Fullført</option><option>Betalt</option></select></div>
               <div><label style="font-size:.75rem; font-weight:500; color:var(--text3);">Pris</label><input id="ed-price" type="number" style="margin-top:.25rem;" value="${c.price||''}"></div>
               <div><label style="font-size:.75rem; font-weight:500; color:var(--text3);">Montør</label><input id="ed-montour" style="margin-top:.25rem;" value="${c.montour_name||''}"></div>
               <div><label style="font-size:.75rem; font-weight:500; color:var(--text3);">Kommentar</label><textarea id="ed-comment" style="margin-top:.25rem;" rows="3">${c.comment||''}</textarea></div>

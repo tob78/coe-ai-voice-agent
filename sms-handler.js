@@ -48,7 +48,7 @@ function formatPhone(phone) {
 }
 
 // ===== SMS RATE LIMITER (global, prevents Twilio 63038 spam) =====
-const _smsRate = { count: 0, date: '', maxPerDay: 50 };
+const _smsRate = { count: 0, date: '', maxPerDay: 250 };
 function _canSendSMS() {
   const today = new Date().toDateString();
   if (_smsRate.date !== today) { _smsRate.count = 0; _smsRate.date = today; }
