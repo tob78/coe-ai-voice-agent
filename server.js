@@ -71,9 +71,12 @@ SAMTALEFLYT — samle i denne rekkefølgen (hopp over besvarte steg):
 2. Evt 1-2 oppfølgingsspørsmål (kun hvis naturlig)
 3. Navn — spør og GJENTA tilbake: "Da har jeg [navn], stemmer det?"
 4. Adresse + postnummer (ALDRI for frisør/salong) — bekreft med stedsnavn
-5. Dato — "Hvilken dato passer?" + spør om alternativ dato
-6. Tidsrom — "Er du ledig hele dagen, eller har du et bestemt tidsrom?"
-7. AVSLUTT: "Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"
+5. Dato — "Hvilken dato passer?" Kall check_availability for å sjekke om datoen er ledig. Fortell kunden om datoen er ledig eller opptatt.
+${company.requires_worker_approval === false ? 
+`6. SPESIFIKT TIDSPUNKT — Dato er ledig? Spør: "Hvilket klokkeslett passer best?" Få et EKSAKT tidspunkt (f.eks. kl 10, kl 14:30). Bookingen bekreftes automatisk, så vi MÅ ha eksakt tid.
+7. AVSLUTT: "Supert! Da er du booket inn [dato] kl [tid]. Du vil få en bekreftelse på SMS. Ha en fin dag!"` :
+`6. Tidsrom — "Er du ledig hele dagen, eller har du et bestemt tidsrom?"
+7. AVSLUTT: "Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"`}
 
 KJERNEATFERD:
 
@@ -2488,7 +2491,7 @@ app.post('/api/auth/unlock', (req, res) => {
           
           // Finn selskap via assistant ID
           const companyResult = await db.query(
-            'SELECT id, name FROM companies WHERE vapi_assistant_id = $1',
+            'SELECT id, name, requires_worker_approval FROM companies WHERE vapi_assistant_id = $1',
             [vc.assistantId]
           );
           const companyId = companyResult.rows.length > 0 ? companyResult.rows[0].id : null;
@@ -2870,12 +2873,29 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             const commentParts = [extractedInfo.comment, extractedInfo.alternative_dates ? `Alt. datoer: ${extractedInfo.alternative_dates}` : null, extractedInfo.befaring ? 'Befaring ønsket' : null, extractedInfo.preferred_employee ? `Ønsket ansatt: ${extractedInfo.preferred_employee}` : null, extractedInfo.samtale_avbrutt ? '⚠️ Samtale avbrutt' : null].filter(Boolean).join('. ') || null;
             await db.query(
               `INSERT INTO bookings (customer_id, company_id, call_id, service_requested, preferred_date, preferred_time, preferred_employee, comment, source, status, confirmation_status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Telefon', $9, 'pending')`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Telefon', $9, $10)`,
               [customerId, companyId, callId, extractedInfo.service_requested || null, extractedInfo.preferred_date || null,
                extractedInfo.preferred_time || null, extractedInfo.preferred_employee || null, commentParts,
-               isBooking ? 'Ny' : 'Henvendelse']
+               isBooking ? 'Ny' : 'Henvendelse',
+               companyResult.rows[0]?.requires_worker_approval === false ? 'confirmed' : 'pending']
             );
             console.log(`📋 Recovery: Booking opprettet for call ${callId} — ${extractedInfo.service_requested || 'ukjent tjeneste'}`);
+          
+          // Auto-confirm: send confirmation SMS with date/time if requires_worker_approval is OFF
+          if (companyResult.rows[0]?.requires_worker_approval === false && callerPhone !== 'ukjent' && extractedInfo.preferred_date) {
+            try {
+              const fullComp = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
+              const custName = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
+              const dateText = extractedInfo.preferred_date || '';
+              const timeText = extractedInfo.preferred_time ? ` kl ${extractedInfo.preferred_time}` : '';
+              const svcText = extractedInfo.service_requested ? `\nTjeneste: ${extractedInfo.service_requested}` : '';
+              const confirmMsg = `Hei${custName}! Din bestilling hos ${fullComp.name} er bekreftet! ✅\n📅 ${dateText}${timeText}${svcText}\nVi gleder oss til å se deg! 😊`;
+              const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
+              const confirmSms = await twilio.messages.create({ body: confirmMsg, from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: callerPhone });
+              console.log(`✅ Auto-bekreftet booking + SMS sendt til ${callerPhone}: ${confirmSms.sid}`);
+              await db.query(`INSERT INTO messages (customer_id, company_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, $2, 'customer', $3, $4, 'booking_confirmation', $5, 'sent', NOW())`, [customerId, companyId, callerPhone, confirmMsg, confirmSms.sid]);
+            } catch (confirmErr) { console.error('Auto-confirm SMS feil:', confirmErr.message); }
+          }
           }
           
           // Send SMS til ansatt (kun for nye samtaler)
@@ -2913,7 +2933,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
           if (customerId && callerPhone !== 'ukjent') {
             try {
               const fullComp = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
-              if (fullComp?.feature_auto_confirm !== false) {
+              if (fullComp?.feature_auto_confirm !== false && fullComp?.requires_worker_approval !== false) {
                 const custName = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
                 const autoMsg = `Hei${custName}! Takk for samtalen med ${fullComp.name}. Vi kommer tilbake til deg med bekreftelse. Ha en fin dag! 😊`;
                 const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
@@ -3316,17 +3336,46 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
   // ===== CHECK AVAILABILITY — AI function call =====
   async function handleCheckAvailability(companyId, dateStr) {
     try {
+      const targetDate = dateStr || new Date().toISOString().split('T')[0];
       const bookings = await db.all(
-        `SELECT b.preferred_date, b.preferred_time, c.name 
-         FROM bookings b JOIN customers c ON b.customer_id = c.id 
-         WHERE b.company_id = $1 AND b.preferred_date >= $2::text 
+        `SELECT b.preferred_date, b.preferred_time, b.service_requested, c.name 
+         FROM bookings b LEFT JOIN customers c ON b.customer_id = c.id 
+         WHERE b.company_id = $1 AND b.preferred_date = $2::text 
          AND b.status NOT IN ('Avbestilt','Avslått/nei','Lagt på') 
-         ORDER BY b.preferred_date, b.preferred_time LIMIT 20`,
-        companyId, dateStr || new Date().toISOString().split('T')[0]
+         AND b.cancelled = 0
+         ORDER BY b.preferred_time`,
+        companyId, targetDate
       );
-      if (!bookings.length) return JSON.stringify({ available: true, message: 'Ingen bookinger funnet for denne perioden. Datoen ser ledig ut.' });
-      const slots = bookings.map(b => `${b.preferred_date} ${b.preferred_time||'hele dagen'} (${b.name})`).join(', ');
-      return JSON.stringify({ available: false, existing_bookings: slots, message: `Det er ${bookings.length} eksisterende bookinger fra ${dateStr}. Sjekk om ønsket tidspunkt kolliderer.` });
+      
+      // Also check surrounding days for alternatives
+      const weekBookings = await db.all(
+        `SELECT preferred_date, preferred_time 
+         FROM bookings 
+         WHERE company_id = $1 AND preferred_date >= $2::text AND preferred_date <= ($2::date + interval '7 days')::text
+         AND status NOT IN ('Avbestilt','Avslått/nei','Lagt på') AND cancelled = 0
+         ORDER BY preferred_date, preferred_time`,
+        companyId, targetDate
+      );
+      
+      if (!bookings.length) {
+        return JSON.stringify({ 
+          available: true, 
+          date: targetDate,
+          message: `${targetDate} er helt ledig! Ingen bookinger denne dagen.`,
+          week_load: weekBookings.length > 0 ? `${weekBookings.length} andre bookinger denne uken` : 'Hele uken er rolig'
+        });
+      }
+      
+      const bookedSlots = bookings.map(b => b.preferred_time || 'hele dagen').join(', ');
+      const names = bookings.map(b => b.preferred_time ? `kl ${b.preferred_time}` : 'heldags').join(', ');
+      
+      return JSON.stringify({ 
+        available: false, 
+        date: targetDate,
+        booked_times: bookedSlots,
+        booking_count: bookings.length,
+        message: `${targetDate} har ${bookings.length} booking(er): ${names}. Andre tidspunkt kan være ledig — spør kunden om alternativ tid.`
+      });
     } catch(e) { return JSON.stringify({ error: e.message }); }
   }
 
@@ -4146,7 +4195,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
         const existing = await db.query('SELECT id FROM calls WHERE twilio_call_sid = $1', [`vapi_${vc.id}`]);
         if (existing.rows.length > 0) { item.skip = 'already saved'; results.push(item); continue; }
         
-        const comp = await db.query('SELECT id, name FROM companies WHERE vapi_assistant_id = $1', [vc.assistantId]);
+        const comp = await db.query('SELECT id, name, requires_worker_approval FROM companies WHERE vapi_assistant_id = $1', [vc.assistantId]);
         if (comp.rows.length === 0) { item.skip = 'no matching company for assistant ' + vc.assistantId; results.push(item); continue; }
         
         item.company = comp.rows[0].name;

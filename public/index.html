@@ -1047,6 +1047,21 @@ async function renderCompanyDetail(id) {
         <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
       </div>` : ''}
 
+      <!-- Manual confirmation toggle -->
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:8px 0">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+          <input type="checkbox" ${c.requires_worker_approval ? 'checked' : ''} 
+            onchange="toggleManualConfirm(${c.id}, this.checked)"
+            style="width:18px;height:18px">
+          &#x1f512; Krever manuell bekreftelse
+        </label>
+        <small style="color:#856404;display:block;margin-top:4px">
+          ${c.requires_worker_approval ? 
+            'PÅ — Ansatt MÅ trykke Bekreft-knapp for hver booking' : 
+            'AV — Bookinger bekreftes automatisk med SMS til kunde'}
+        </small>
+      </div>
+
       <!-- Feature toggles — INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
         <!-- INFO INN -->
@@ -1568,6 +1583,15 @@ async function toggleFeature(companyId, featureName, btn) {
   } catch(e) {
     showToast('❌ Kunne ikke endre feature: ' + e.message);
   }
+}
+
+async function toggleManualConfirm(companyId, val) {
+  await fetch('/api/companies/' + companyId, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ requires_worker_approval: val })
+  });
+  renderCompanyDetail(companyId);
 }
 
 async function toggleAutoMessages(companyId, btn) {
