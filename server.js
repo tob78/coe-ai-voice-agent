@@ -54,7 +54,9 @@ function buildVapiBasePrompt(company) {
     }
   }
   
-  return `Du er en norsk K.I.-assistent som svarer på telefonen for ${company.name}.
+  return `⚠️ VIKTIGSTE REGEL: Etter HVERT svar fra kunden → SVAR UMIDDELBART med kort bekreftelse + neste spørsmål. ALDRI vær stille. ALDRI vent. MAKS 2 SEKUNDER responstid. TOM RESPONS = FORBUDT.
+
+Du er en norsk K.I.-assistent som svarer på telefonen for ${company.name}.
 I DAG ER: ${todayStr}
 UKENR: ${Math.ceil((Math.floor((now - new Date(now.getFullYear(),0,1)) / 86400000) + new Date(now.getFullYear(),0,1).getDay() + 1) / 7)}
 
@@ -94,12 +96,25 @@ KRITISK:
 - Hvis kunden gir flere ting i en setning, samle alt og hopp over utfylte steg.
 - ALDRI legg på FØR du har samlet dato OG tidsrom (med mindre kunden vil avslutte).
 
+SMART INFO-EKSTRAKSJON (UFRAVIKELIG):
+- Hvis kunden gir FLERE opplysninger i ett svar → NOTER ALT og HOPP OVER steg som allerede er besvart.
+- Eksempel: "Hei, jeg heter Frank, bor på Bakkelia 5, trenger rørlegger" → noter alt, hopp rett til dato.
+- ALDRI spør om noe kunden allerede har sagt!
+
+NAVNEBEKREFTELSE (UFRAVIKELIG):
+- Når kunden sier navnet → GJENTA tilbake: "Da har jeg [navn]. Stemmer det?"
+- ALDRI endre eller tolke navn. "Tobias" = Tobias, ALDRI "Torbjørn". Skriv NØYAKTIG hva kunden sier.
+- Hvis usikker → "Unnskyld, kan du stave navnet?"
+
 ANTI-GJENTAKELSE (UFRAVIKELIG):
 - Hvis kunden har sagt navnet sitt → DU HAR NAVNET. ALDRI spør igjen.
 - Hvis kunden har sagt adressen → DU HAR ADRESSEN. ALDRI spør igjen.
 - Selv om kunden sier navnet tidlig, uformelt eller midt i en setning — DU HUSKER DET.
-- Eksempel: Kunden sier "Hei, det er Frank" → ALDRI spør "Hva er navnet ditt?" senere.
-- ALDRI avbryt kunden midt i en setning — vent til kunden er ferdig med å snakke.
+
+ALDRI AVBRYT KUNDEN (KRITISK):
+- Når kunden snakker → VENT til kunden er HELT FERDIG. ALDRI avbryt midt i en setning.
+- Hvis kunden begynner å snakke mens du snakker → STOPP UMIDDELBART og la kunden prate ferdig.
+- Kunden kan gi mye info på én gang — LA DEM SNAKKE FERDIG, trekk ut alt, bekreft kort.
 
 ALDRI-LEGG-PÅ-REGLER (UFRAVIKELIG):
 - Du skal ALDRI legge på samtalen selv. BARE kunden kan legge på.
@@ -567,7 +582,7 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: dbCheck ? 'ok' : 'error',
       timestamp: new Date().toISOString(), 
-      version: '3.9.48',
+      version: '3.9.50',
       uptime: Math.round(process.uptime()),
       dbLatency,
       env: {
@@ -581,7 +596,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ 
       status: 'error', 
       timestamp: new Date().toISOString(),
-      version: '3.9.48',
+      version: '3.9.50',
       error: err.message 
     });
   }
@@ -3094,18 +3109,18 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             console.log(`✅ SMS catch-up sendt for call ${call.call_id}: ${smsMsg.sid}`);
             
             // Log SMS
-            await db.run(
+            await db.query(
               `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at)
                VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', $4, 'sent', NOW())`,
-              call.customer_id, targetPhone, parts.join('\n'), smsMsg.sid
+              [call.customer_id, targetPhone, parts.join('\n'), smsMsg.sid]
             );
           } catch (smsErr) {
             console.error(`⚠️ SMS catch-up feil for call ${call.call_id}:`, smsErr.message);
             // Logg feil slik at vi ikke prøver igjen
-            await db.run(
+            await db.query(
               `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, status, created_at)
                VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', 'failed', NOW())`,
-              call.customer_id, call.montour_phone || 'unknown', `FEIL: ${smsErr.message}`
+              [call.customer_id, call.montour_phone || 'unknown', `FEIL: ${smsErr.message}`]
             ).catch(() => {});
           }
         }
