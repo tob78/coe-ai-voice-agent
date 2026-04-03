@@ -286,10 +286,10 @@
       visibility: visible !important; display: block !important;
     }
     .sidebar { overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; max-height: 100vh !important; }
-    .sidebar .nav-item { padding: .4rem .75rem !important; font-size: .78rem !important; margin: .1rem .4rem !important; }
+    .sidebar .nav-item { padding: .3rem .6rem !important; font-size: .72rem !important; margin: .05rem .3rem !important; }
     .sidebar h2 { font-size: 1rem !important; }
     .sidebar p { font-size: .65rem !important; }
-    #sidebar-confirmed { max-height: 120px !important; overflow-y: auto !important; }
+    #sidebar-confirmed { max-height: 80px !important; overflow-y: auto !important; }
     #sidebar-confirmed .nav-item, #sidebar-confirmed > div > div { font-size: .75rem !important; padding: .3rem .5rem !important; }
     #sidebar > div:last-child, #sidebar [style*="margin-top:auto"] {
       position: sticky !important; bottom: 0 !important; 
@@ -353,15 +353,17 @@
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar" style="display:none;">
   <div style="padding:.75rem; border-bottom:1px solid var(--border); text-align:center;">
-    <div class="gear-icon" style="font-size:2rem;">⚙️</div>
-    <h1 style="color:#fff; font-weight:800; font-size:1.25rem; margin-top:.25rem;">COE CRM</h1>
-    <p style="color:var(--text3); font-size:.75rem; margin-top:.25rem;" id="sidebar-subtitle">Kundeoppfølging</p>
-    <div style="margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border);">
-      <div style="display:flex; align-items:center; justify-content:center; gap:.5rem;">
-        <img src="/crm/ga-logo.png" alt="GA" style="width:64px; height:64px; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
-        <img src="/crm/ga-postit.png" alt="GA" style="width:48px; height:auto; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
+    <div style="display:flex; align-items:center; gap:.5rem; justify-content:center;">
+      <div class="gear-icon" style="font-size:1.5rem;">⚙️</div>
+      <h1 style="color:#fff; font-weight:800; font-size:1.1rem;">COE CRM</h1>
+    </div>
+    <p style="color:var(--text3); font-size:.65rem; margin-top:.125rem;" id="sidebar-subtitle">Kundeoppfølging</p>
+    <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px solid var(--border);">
+      <div style="display:flex; align-items:center; justify-content:center; gap:.35rem;">
+        <img src="/crm/ga-logo.png" alt="GA" style="width:40px; height:40px; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
+        <img src="/crm/ga-postit.png" alt="GA" style="width:32px; height:auto; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
       </div>
-      <p style="color:var(--text3); font-size:.65rem; margin-top:.25rem; line-height:1.3;">I samarbeid med<br>Gudbrandsdal Automatisering</p>
+      <p style="color:var(--text3); font-size:.55rem; margin-top:.125rem; line-height:1.2;">Gudbrandsdal Automatisering</p>
     </div>
   </div>
   <nav style="margin-top:1rem;" id="nav">
@@ -1438,48 +1440,9 @@ function sourceRow(c, color) {
   const srcIcon = c.source === 'Chatbot' ? '💬' : c.source === 'Manuell' || c.source === 'Melding' ? '📱' : '📞';
   return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'' + color + '\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
     '<div style="flex:1; min-width:0;">' +
-    '<div style="font-weight:600;">' + (c.name || 'Ukjent') + '</div>' +
+    '<div style="font-weight:600;">' + (c.name || 'Ukjent') + ' <span style="font-size:.7rem; color:var(--text3); font-weight:400;">(' + (c.source === 'Chatbot' ? 'chatbot-kunde' : (c.source === 'Manuell' || c.source === 'Melding') ? 'melding-kunde' : 'telefon-kunde') + ')</span></div>' +
     '<div style="font-size:.75rem; color:var(--text3); margin-top:.125rem;">📅 ' + dt + ' • ' + srcIcon + ' ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div>' +
     '</div><div>' + statusBadge(c.status) + '</div></div>';
-}
-
-function renderAllContacts(customers) {
-  const el = $('cd-all-contacts');
-  if (!el) return;
-  const sorted = [...customers].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-  if (!sorted.length) { el.innerHTML = ''; return; }
-  const SHOW = 5;
-  const visible = sorted.slice(0, SHOW);
-  const hidden = sorted.slice(SHOW);
-  el.innerHTML = '<div class="stat-card" style="border-left:4px solid #94a3b8;">' +
-    '<h3 style="font-weight:700; color:#94a3b8; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem;">' +
-    '<span style="font-size:1.25rem;">📋</span> Alle kontakter samlet (' + sorted.length + ')</h3>' +
-    '<div style="display:flex; flex-direction:column; gap:.5rem;">' +
-    visible.map(c => {
-      const srcIcon = c.source === 'Chatbot' ? '💬' : (c.source === 'Manuell' || c.source === 'Melding') ? '📱' : '📞';
-      const srcColor = c.source === 'Chatbot' ? '#8b5cf6' : (c.source === 'Manuell' || c.source === 'Melding') ? '#f59e0b' : '#3b82f6';
-      const dt = c.created_at ? fmtDateTime(c.created_at) : '–';
-      return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
-        '<div style="display:flex; align-items:center; gap:.75rem; flex:1; min-width:0;">' +
-        '<span style="font-size:1.1rem; min-width:1.5rem; text-align:center;" title="' + (c.source||'Telefon') + '">' + srcIcon + '</span>' +
-        '<div><div style="font-weight:600;">' + (c.name || 'Ukjent') + ' <span style="font-size:.65rem; padding:.125rem .4rem; border-radius:.25rem; background:' + srcColor + '22; color:' + srcColor + '; font-weight:500;">' + (c.source||'Telefon') + '</span></div>' +
-        '<div style="font-size:.75rem; color:var(--text3);">📅 ' + dt + ' • ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div></div></div>' +
-        '<div>' + statusBadge(c.status) + '</div></div>';
-    }).join('') +
-    (hidden.length ? '<div id="all-hidden" style="display:none; flex-direction:column; gap:.5rem;">' +
-      hidden.map(c => {
-        const srcIcon2 = c.source === 'Chatbot' ? '💬' : (c.source === 'Manuell' || c.source === 'Melding') ? '📱' : '📞';
-        const srcColor2 = c.source === 'Chatbot' ? '#8b5cf6' : (c.source === 'Manuell' || c.source === 'Melding') ? '#f59e0b' : '#3b82f6';
-        const dt2 = c.created_at ? fmtDateTime(c.created_at) : '–';
-        return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
-          '<div style="display:flex; align-items:center; gap:.75rem; flex:1; min-width:0;">' +
-          '<span style="font-size:1.1rem; min-width:1.5rem; text-align:center;">' + srcIcon2 + '</span>' +
-          '<div><div style="font-weight:600;">' + (c.name || 'Ukjent') + ' <span style="font-size:.65rem; padding:.125rem .4rem; border-radius:.25rem; background:' + srcColor2 + '22; color:' + srcColor2 + '; font-weight:500;">' + (c.source||'Telefon') + '</span></div>' +
-          '<div style="font-size:.75rem; color:var(--text3);">📅 ' + dt2 + ' • ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div></div></div>' +
-          '<div>' + statusBadge(c.status) + '</div></div>';
-      }).join('') + '</div>' +
-      '<button class="btn btn-secondary" onclick="toggleHidden(\'all-hidden\',this,' + sorted.length + ',\'kontakter\')" style="margin-top:.5rem; font-size:.875rem; padding:.5rem 1rem; align-self:flex-start;">▼ Vis alle ' + sorted.length + ' kontakter</button>' : '') +
-    '</div></div>';
 }
 
 function toggleHidden(id, btn, total, label) {
@@ -1622,17 +1585,12 @@ async function toggleAutoMessages(companyId, btn) {
     btn.style.background = newVal ? '#7c3aed22' : '#ef444422';
     btn.style.color = newVal ? '#a78bfa' : '#ef4444';
     btn.textContent = '📨 Automatiske meldinger ' + (newVal ? 'PÅ' : 'AV');
-    btn.style.borderColor = newVal ? '#a78bfa' : '#ef4444';
-    btn.style.background = newVal ? '#7c3aed22' : '#ef444422';
-    btn.style.color = newVal ? '#a78bfa' : '#ef4444';
     // Update description text
     const desc = btn.nextElementSibling;
     if (desc && desc.tagName === 'P') desc.textContent = newVal ? 'Alle 4 meldinger sendes automatisk etter samtale' : 'Hver melding må bekreftes manuelt';
     // Re-render pending section (hide/show based on auto_messages)
     if (currentCompanyData) { currentCompanyData.feature_auto_messages = newVal; renderPendingBookings(companyId); }
-    // Update description
-    const desc = btn.parentElement.querySelector('p');
-    if (desc) desc.textContent = newVal ? 'Meldinger sendes ut automatisk etter samtaler' : 'Hver melding må bekreftes manuelt';
+
   } catch(e) { alert('Feil: ' + e.message); }
 }
 
