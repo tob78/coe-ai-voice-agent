@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.54 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.59 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -90,7 +90,7 @@ KJERNEATFERD:
 6. DATO vs KLOKKESLETT: Tall + måned = DATO. "Klokka" + tall = KLOKKESLETT. Si datoer som ordenstall.
 
 ADRESSE: Gatenavn → postnummer → bekreft med stedsnavn. Bruk validate_address/lookup_postal_code. Maks 2 forsøk.
-FUNCTION CALLING: validate_address, lookup_postal_code, check_company_services, check_customer, transferCall — bruk naturlig. Kall check_customer med innringerens telefonnummer ved STARTEN av samtalen for å sjekke om kunden har ringt før.
+FUNCTION CALLING: validate_address, lookup_postal_code, check_company_services, check_customer, check_availability, get_price_estimate, transferCall — bruk naturlig. Kall check_customer ved STARTEN. check_availability sjekker ledige tider. get_price_estimate gir prisoverslag.
 HUMAN ESCALATION: Bruk transferCall BARE når: kunden ber om menneske, du ikke forstår etter 3 forsøk, kunden spør om ting du ikke vet (lager, hvem er på jobb, tekniske detaljer). Si "Jeg kobler deg til en kollega" FØR transfer.
 AVSLUTNING: KUN ÉN GANG. Aldri "Goodbye". Vent 2-3 sek etter.
 STILLHET: 10+ sek → "Er du fortsatt der?" | 20+ sek → avslutt høflig.
@@ -493,7 +493,7 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: dbCheck ? 'ok' : 'error',
       timestamp: new Date().toISOString(), 
-      version: '3.9.54',
+      version: '3.9.59',
       uptime: Math.round(process.uptime()),
       dbLatency,
       env: {
@@ -508,7 +508,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ 
       status: 'error', 
       timestamp: new Date().toISOString(),
-      version: '3.9.54',
+      version: '3.9.59',
       error: err.message 
     });
   }
@@ -627,7 +627,7 @@ app.post('/twilio/voice/respond', async (req, res) => {
     console.log(`📊 STT DEBUG — All Twilio params: ${JSON.stringify(req.body)}`);
 
     // SPEED: Single JOIN query instead of 2 separate queries
-    const sessionRow = await db.get(`SELECT cs.*, co.id as comp_id, co.name as comp_name, co.industry as comp_industry, co.greeting as comp_greeting, co.montour_phone as comp_montour_phone, co.boss_phone as comp_boss_phone, co.phone as comp_phone, co.logo_url as comp_logo_url, co.sms_notify_worker as comp_sms_notify_worker, co.sms_confirm_customer as comp_sms_confirm_customer, co.sms_remind_customer as comp_sms_remind_customer, co.sms_extract_employee as comp_sms_extract_employee, co.system_prompt as comp_system_prompt FROM call_sessions cs JOIN companies co ON cs.company_id = co.id WHERE cs.id = $1`, sessionId);
+    const sessionRow = await db.get(`SELECT cs.*, co.id as comp_id, co.name as comp_name, co.industry as comp_industry, co.greeting as comp_greeting, co.montour_phone as comp_montour_phone, co.boss_phone as comp_boss_phone, co.phone as comp_phone, co.logo_url as comp_logo_url, co.sms_notify_worker as comp_sms_notify_worker, co.sms_confirm_customer as comp_sms_confirm_customer, co.sms_remind_customer as comp_sms_remind_customer, co.sms_extract_employee as comp_sms_extract_employee, co.system_prompt as comp_system_prompt, co.feature_auto_confirm as comp_feature_auto_confirm, co.feature_employee_alert as comp_feature_employee_alert, co.feature_info_out as comp_feature_info_out FROM call_sessions cs JOIN companies co ON cs.company_id = co.id WHERE cs.id = $1`, sessionId);
     if (!sessionRow) {
       const twiml = new VoiceResponse();
       naturalSay(twiml, 'Beklager, det oppsto en teknisk feil. Kan du prøve å ringe igjen? Ha en fin dag!');
@@ -635,7 +635,7 @@ app.post('/twilio/voice/respond', async (req, res) => {
       return;
     }
     session = sessionRow;
-    company = { id: sessionRow.comp_id, name: sessionRow.comp_name, industry: sessionRow.comp_industry, greeting: sessionRow.comp_greeting, montour_phone: sessionRow.comp_montour_phone, boss_phone: sessionRow.comp_boss_phone, phone: sessionRow.comp_phone, logo_url: sessionRow.comp_logo_url, sms_notify_worker: sessionRow.comp_sms_notify_worker, sms_confirm_customer: sessionRow.comp_sms_confirm_customer, sms_remind_customer: sessionRow.comp_sms_remind_customer, sms_extract_employee: sessionRow.comp_sms_extract_employee, system_prompt: sessionRow.comp_system_prompt };
+    company = { id: sessionRow.comp_id, name: sessionRow.comp_name, industry: sessionRow.comp_industry, greeting: sessionRow.comp_greeting, montour_phone: sessionRow.comp_montour_phone, boss_phone: sessionRow.comp_boss_phone, phone: sessionRow.comp_phone, logo_url: sessionRow.comp_logo_url, sms_notify_worker: sessionRow.comp_sms_notify_worker, sms_confirm_customer: sessionRow.comp_sms_confirm_customer, sms_remind_customer: sessionRow.comp_sms_remind_customer, sms_extract_employee: sessionRow.comp_sms_extract_employee, system_prompt: sessionRow.comp_system_prompt, feature_auto_confirm: sessionRow.comp_feature_auto_confirm, feature_employee_alert: sessionRow.comp_feature_employee_alert, feature_info_out: sessionRow.comp_feature_info_out };
 
     const twiml = new VoiceResponse();
 
@@ -801,9 +801,21 @@ app.post('/twilio/voice/respond', async (req, res) => {
             }
           } catch(e) { console.error('⚠️ Auto-analyse feilet:', e.message); }
 
-          // SMS — KUN uttrekk til ansatt. Bekreftelse-SMS sendes ALDRI automatisk — kun ved manuelt CRM-klikk.
+          // SMS — uttrekk til ansatt + auto-bekreftelse til kunde
           await sendToMontour(customer, company);
-          // FJERNET: sendBookingConfirmation — skal ALDRI sendes automatisk
+
+          // Auto-bekreftelse: "Vi kommer tilbake" til kunde — MOMENTANT etter samtale
+          if (company.feature_auto_confirm !== false && customer?.phone) {
+            try {
+              const { sendSms } = require('./sms-handler');
+              const autoMsg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Takk for samtalen med ${company.name}. Vi kommer tilbake til deg med bekreftelse. Ha en fin dag! 😊`;
+              const smsRes = await sendSms(customer.phone, autoMsg);
+              if (smsRes?.sid) {
+                await db.query(`INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, 'customer', $2, $3, 'auto_confirm', $4, 'sent', NOW())`, [customer.id, customer.phone, autoMsg, smsRes.sid]);
+                console.log(`📨 Auto-bekreftelse sendt til ${customer.phone}`);
+              }
+            } catch(e) { console.error('⚠️ Auto-bekreftelse SMS feilet:', e.message); }
+          }
           // Uttrekk-SMS: AI-oppsummering av samtalen til montør/eier
           if (fullTranscript && company.sms_extract_employee !== false) {
             await sendExtractionSms(fullTranscript, customer, company);
@@ -977,6 +989,33 @@ app.post('/twilio/call-status', async (req, res) => {
 });
 
 // ===============================================================
+
+  // ===== API: Get messages for a customer =====
+  app.get('/api/customers/:id/messages', async (req, res) => {
+    try {
+      const msgs = await db.all(
+        'SELECT * FROM messages WHERE customer_id = $1 ORDER BY created_at DESC',
+        req.params.id
+      );
+      res.json(msgs);
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ===== API: Get messages for a company =====
+  app.get('/api/companies/:id/messages', async (req, res) => {
+    try {
+      const msgs = await db.all(
+        `SELECT m.*, c.name as customer_name, c.phone as customer_phone 
+         FROM messages m 
+         LEFT JOIN customers c ON m.customer_id = c.id 
+         WHERE m.company_id = $1 OR c.company_id = $1
+         ORDER BY m.created_at DESC LIMIT 100`,
+        req.params.id
+      );
+      res.json(msgs);
+    } catch(e) { res.status(500).json({ error: e.message }); }
+  });
+
 // 4. INCOMING SMS - Handle montør responses and customer photos
 // ===============================================================
 app.post('/twilio/sms', async (req, res) => {
@@ -2325,15 +2364,26 @@ app.get('/api/test-openai', async (req, res) => {
 // ===============================================================
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Coe#Adm!n2024xQ';
 
+// Server-side lockout: 2 attempts then permanent lock per IP
+const _lockoutMap = new Map(); // ip -> { attempts, locked }
+
 app.post('/api/auth/login', async (req, res) => {
   const { password } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
 
   if (!password) {
     return res.status(400).json({ success: false, error: 'Password is required' });
   }
 
+  // Check lockout
+  const state = _lockoutMap.get(ip) || { attempts: 0, locked: false };
+  if (state.locked) {
+    return res.status(403).json({ success: false, error: 'Kontoen er sperret. Kontakt admin for å oppheve.', locked: true });
+  }
+
   // Check admin password
   if (password === ADMIN_PASSWORD) {
+    _lockoutMap.delete(ip);
     return res.json({ success: true, companyId: null, companyName: 'Administrator', isAdmin: true });
   }
 
@@ -2341,11 +2391,31 @@ app.post('/api/auth/login', async (req, res) => {
   const companies = await db.all("SELECT id, name, login_password FROM companies WHERE login_password IS NOT NULL AND login_password != ''");
   for (const company of companies) {
     if (company.login_password === password) {
+      _lockoutMap.delete(ip);
       return res.json({ success: true, companyId: company.id, companyName: company.name, isAdmin: false });
     }
   }
 
-  return res.status(401).json({ success: false, error: 'Feil passord' });
+  // Wrong password — increment attempts
+  state.attempts += 1;
+  if (state.attempts >= 2) {
+    state.locked = true;
+    _lockoutMap.set(ip, state);
+    return res.status(403).json({ success: false, error: 'Kontoen er sperret etter 2 forsøk. Kontakt admin for å oppheve.', locked: true });
+  }
+  _lockoutMap.set(ip, state);
+  return res.status(401).json({ success: false, error: `Feil passord (${2 - state.attempts} forsøk igjen)` });
+});
+
+// Admin unlock endpoint — resets lockout for all IPs
+app.post('/api/auth/unlock', (req, res) => {
+  const { adminKey } = req.body;
+  if (adminKey !== ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, error: 'Ugyldig admin-nøkkel' });
+  }
+  const count = _lockoutMap.size;
+  _lockoutMap.clear();
+  res.json({ success: true, message: `Lockout nullstilt for ${count} IP-adresser` });
 });
 
 // ===============================================================
@@ -3209,6 +3279,43 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
     }
   }
 
+
+  // ===== CHECK AVAILABILITY — AI function call =====
+  async function handleCheckAvailability(companyId, dateStr) {
+    try {
+      const bookings = await db.all(
+        `SELECT b.preferred_date, b.preferred_time, c.name 
+         FROM bookings b JOIN customers c ON b.customer_id = c.id 
+         WHERE b.company_id = $1 AND b.preferred_date >= $2::text 
+         AND b.status NOT IN ('Avbestilt','Avslått/nei','Lagt på') 
+         ORDER BY b.preferred_date, b.preferred_time LIMIT 20`,
+        companyId, dateStr || new Date().toISOString().split('T')[0]
+      );
+      if (!bookings.length) return JSON.stringify({ available: true, message: 'Ingen bookinger funnet for denne perioden. Datoen ser ledig ut.' });
+      const slots = bookings.map(b => `${b.preferred_date} ${b.preferred_time||'hele dagen'} (${b.name})`).join(', ');
+      return JSON.stringify({ available: false, existing_bookings: slots, message: `Det er ${bookings.length} eksisterende bookinger fra ${dateStr}. Sjekk om ønsket tidspunkt kolliderer.` });
+    } catch(e) { return JSON.stringify({ error: e.message }); }
+  }
+
+  // ===== GET PRICE ESTIMATE — AI function call =====
+  async function handleGetPriceEstimate(companyId, service) {
+    try {
+      // Look at historical bookings for similar services
+      const similar = await db.all(
+        `SELECT b.service_requested, b.price, c.name 
+         FROM bookings b JOIN customers c ON b.customer_id = c.id 
+         WHERE b.company_id = $1 AND b.price IS NOT NULL AND b.price > 0 
+         ORDER BY b.created_at DESC LIMIT 10`,
+        companyId
+      );
+      if (!similar.length) return JSON.stringify({ message: 'Ingen prishistorikk tilgjengelig ennå. Be kunden kontakte oss for et pristilbud.' });
+      const avg = Math.round(similar.reduce((s,b) => s + b.price, 0) / similar.length);
+      const min = Math.min(...similar.map(b => b.price));
+      const max = Math.max(...similar.map(b => b.price));
+      return JSON.stringify({ average_price: avg, min_price: min, max_price: max, sample_count: similar.length, message: `Basert på ${similar.length} tidligere oppdrag: Gjennomsnitt ${avg} kr (${min}-${max} kr). Dette er veiledende — endelig pris avtales etter befaring.` });
+    } catch(e) { return JSON.stringify({ error: e.message }); }
+  }
+
   // ===== VAPI WEBHOOK — mottar events fra Vapi voice assistant =====
   // Alias: begge URL-varianter fungerer
   app.post('/api/vapi/webhook', (req, res, next) => { req.url = '/api/vapi-webhook'; next(); });
@@ -3248,6 +3355,12 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             } else if (fnName === 'check_customer') {
               const companyId = await extractCompanyIdFromCall(event);
               result = await handleCheckCustomer(args.phone, companyId, db);
+            } else if (fnName === 'check_availability') {
+              const companyId = await extractCompanyIdFromCall(event);
+              result = await handleCheckAvailability(companyId, args.date);
+            } else if (fnName === 'get_price_estimate') {
+              const companyId = await extractCompanyIdFromCall(event);
+              result = await handleGetPriceEstimate(companyId, args.service);
             } else {
               result = JSON.stringify({ error: 'Unknown function' });
             }
@@ -3634,6 +3747,34 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                       phone: { type: 'string', description: 'The caller phone number in E.164 format' }
                     },
                     required: ['phone']
+                  }
+                }
+              },
+              {
+                type: 'function',
+                function: {
+                  name: 'check_availability',
+                  description: 'Sjekker om en dato/tid er ledig for booking. Kall denne når kunden foreslår en dato.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      date: { type: 'string', description: 'Dato i YYYY-MM-DD format' }
+                    },
+                    required: ['date']
+                  }
+                }
+              },
+              {
+                type: 'function',
+                function: {
+                  name: 'get_price_estimate',
+                  description: 'Henter prisinformasjon basert på historikk. Kall denne når kunden spør om pris.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      service: { type: 'string', description: 'Tjenesten kunden spør om' }
+                    },
+                    required: ['service']
                   }
                 }
               },

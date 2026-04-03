@@ -2,19 +2,22 @@
 <html lang="nb">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>COE CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --sidebar-w: 240px; --bg: #0f172a; --bg2: #1e293b; --bg3: #334155; --card: #1e293b; --border: #334155; --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b; --accent: #3b82f6; --accent2: #2563eb; --green: #22c55e; --red: #ef4444; --yellow: #f59e0b; }
+  :root { --sidebar-w: 200px; --bg: #0f172a; --bg2: #1e293b; --bg3: #334155; --card: #1e293b; --border: #334155; --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b; --accent: #3b82f6; --accent2: #2563eb; --green: #22c55e; --red: #ef4444; --yellow: #f59e0b; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
   .sidebar { width: var(--sidebar-w); background: var(--bg2); min-height: 100vh; position: fixed; left: 0; top: 0; z-index: 40; transition: transform .2s; border-right: 1px solid var(--border); display: flex; flex-direction: column; }
   .main-content { margin-left: var(--sidebar-w); min-height: 100vh; }
-  .nav-item { display: flex; align-items: center; gap: .75rem; padding: .75rem 1.25rem; color: var(--text2); cursor: pointer; transition: all .15s; border-radius: .5rem; margin: .25rem .75rem; font-size: .95rem; }
+  .nav-item { display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem; color: var(--text2); cursor: pointer; transition: all .15s; border-radius: .5rem; margin: .2rem .5rem; font-size: .85rem; }
   .nav-item:hover { background: var(--bg3); color: var(--text); }
   .nav-item.active { background: var(--accent); color: #fff; }
-  .stat-card { background: var(--card); border-radius: .75rem; padding: 1.5rem; border: 1px solid var(--border); }
+  .stat-card { background: var(--card); border-radius: .75rem; padding: 1rem; border: 1px solid var(--border); }
   .badge { display: inline-flex; align-items: center; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; }
   .badge-green { background: #16a34a30; color: #4ade80; }
   .badge-blue { background: #2563eb30; color: #60a5fa; }
@@ -89,8 +92,8 @@
   .phone-highlight { background: linear-gradient(135deg, #1e3a5f 0%, #1e40af30 100%); border: 1px solid #3b82f650; border-radius: .75rem; padding: 1rem 1.25rem; }
 
   /* Chat widget styles */
-  .chat-container { display: flex; flex-direction: column; height: calc(100vh - 140px); max-height: 700px; }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+  .chat-container { display: flex; flex-direction: column; height: calc(100vh - 180px); max-height: 700px; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
   .chat-bubble { max-width: 80%; padding: .75rem 1rem; border-radius: 1rem; font-size: .875rem; line-height: 1.5; word-wrap: break-word; }
   .chat-bubble.ai { background: var(--bg3); color: var(--text); border-bottom-left-radius: .25rem; align-self: flex-start; }
   .chat-bubble.user { background: var(--accent); color: #fff; border-bottom-right-radius: .25rem; align-self: flex-end; }
@@ -133,16 +136,36 @@
 
   /* ===== MOBILE RESPONSIVE ===== */
   @media (max-width: 768px) {
-    /* Login page */
-    .login-layout { flex-direction: column !important; gap: 1rem !important; padding: 1rem !important; }
-    .login-left, .login-right { display: none !important; }
-    .login-logo-side { display: none !important; }
-    .login-center { max-width: 100% !important; width: 100% !important; }
+    /* Login page — logos side-by-side on mobile, card centered */
+    .login-layout, .login-screen > div { 
+      flex-direction: row !important; flex-wrap: wrap !important; 
+      gap: .5rem !important; padding: .5rem !important; 
+      justify-content: center !important; align-items: flex-end !important;
+    }
+    .login-logo-side { 
+      flex: 0 0 auto !important; max-height: 15vh !important; padding: 0 !important; 
+      width: 42% !important; max-width: 42vw !important;
+    }
+    .login-logo-side img { max-height: 14vh !important; width: 100% !important; max-width: none !important; object-fit: contain !important; }
+    .login-center, .login-card { 
+      max-width: 100% !important; width: 100% !important; flex: 0 0 auto !important; 
+      order: 3 !important; margin-top: .25rem !important;
+    }
+    .login-card .gear-icon { font-size: 1.5rem !important; }
+    .login-card h1 { font-size: 1.25rem !important; margin-top: .25rem !important; }
+    .login-mini-icons { margin: .25rem 0 !important; }
+    .login-card p { font-size: .75rem !important; margin-top: .125rem !important; }
     
+
+    /* Dashboard: siste bestillinger first on mobile */
+    .dash-bottom-grid { grid-template-columns: 1fr !important; }
+    .dash-recent-card { order: 1 !important; }
+    .dash-chart-card { order: 2 !important; }
+
     /* Sidebar */
     .sidebar { 
-      position: fixed !important; left: -260px !important; top: 0 !important; bottom: 0 !important; 
-      z-index: 100 !important; transition: left 0.3s !important; width: 240px !important;
+      position: fixed !important; left: -210px !important; top: 0 !important; bottom: 0 !important; 
+      z-index: 100 !important; transition: left 0.3s !important; width: 200px !important;
       transform: none !important;
     }
     .sidebar.open { left: 0 !important; }
@@ -159,7 +182,8 @@
     
     /* Mobile header */
     #mobile-header { display: flex !important; position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; z-index: 30 !important; }
-    #app { padding-top: 3.5rem !important; }
+    #app { padding-top: 4.5rem !important; }
+    #app > h2:first-child { padding-top: .5rem; }
     
     /* FORCE alle grids til 1 kolonne — bruker bred selector */
     div[style*="grid-template-columns"] {
@@ -196,9 +220,10 @@
       flex-direction: column !important; align-items: flex-start !important;
     }
     
-    /* Calendar — kompakt */
+    /* Calendar — kompakt + weekdays left-aligned */
     .calendar-grid { font-size: 0.7rem !important; }
     .calendar-grid td { padding: 0.2rem !important; }
+    .calendar-grid th { text-align: left !important; padding-left: .25rem !important; }
     .cal-day { min-height: 50px !important; }
     
     /* Modal — full bredde */
@@ -250,9 +275,16 @@
       grid-template-columns: 1fr !important;
     }
     
-    /* Logg ut-knapp synlig */
+    /* Sidebar bottom always visible on mobile */
     #sidebar .sidebar-footer, #sidebar [onclick*="logout"] {
       visibility: visible !important; display: block !important;
+    }
+    .sidebar { overflow-y: auto !important; }
+    #sidebar > div:last-child, #sidebar [style*="margin-top:auto"] {
+      position: sticky !important; bottom: 0 !important; 
+      background: var(--bg2) !important; padding: .5rem !important;
+      border-top: 1px solid var(--border) !important;
+      z-index: 5 !important;
     }
   }
 
@@ -261,8 +293,12 @@
     .header-company-name { max-width: 140px !important; }
     .tab, [role="tab"] { font-size: 0.65rem !important; }
     button, .btn { font-size: 0.7rem !important; }
-    #app { padding: 0.5rem !important; padding-top: 3.5rem !important; }
+    #app { padding: 0.5rem !important; padding-top: 4.5rem !important; }
   }
+
+.source-tab { background:#1e293b; color:var(--text3); border:1px solid var(--border); transition:all .15s; }
+.source-tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.source-tab:hover { opacity:.85; }
 </style>
 </head>
 <body>
@@ -270,8 +306,8 @@
 <!-- Login Screen -->
 <div id="login-screen" class="login-screen">
   <div style="display:flex; align-items:center; justify-content:center; gap:1rem; max-width:1200px; width:100%; padding:0 1rem;">
-    <div class="login-logo-side" style="flex:1; display:flex; align-items:center; justify-content:center; min-width:0;">
-      <img src="/crm/ga-postit.png" alt="GA Post-it" style="width:100%; max-width:400px; height:auto; object-fit:contain; filter:drop-shadow(0 4px 16px rgba(0,0,0,.4)); cursor:pointer;" onclick="window.open(this.src)">
+    <div class="login-logo-side" style="flex:1; display:flex; align-items:center; justify-content:center; min-width:0; padding:1rem;">
+      <img src="/crm/ga-logo.png" alt="Gudbrandsdal Automatisering" style="width:100%; max-width:none; height:auto; max-height:80vh; object-fit:contain; filter:drop-shadow(0 4px 16px rgba(0,0,0,.4)); cursor:pointer;" onclick="window.open(this.src)">
     </div>
   <div class="login-card" style="flex:0 0 360px; max-width:360px;">
     <div style="text-align:center; margin-bottom:1.5rem;">
@@ -294,16 +330,16 @@
       </div>
     </div>
   </div>
-    <div class="login-logo-side" style="flex:1; display:flex; align-items:center; justify-content:center; min-width:0;">
-      <img src="/crm/ga-logo.png" alt="Gudbrandsdal Automatisering" style="width:100%; max-width:400px; height:auto; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
+    <div class="login-logo-side" style="flex:1; display:flex; align-items:center; justify-content:center; min-width:0; padding:1rem;">
+      <img src="/crm/ga-postit.png" alt="GA Post-it" style="width:100%; max-width:none; height:auto; max-height:80vh; object-fit:contain; filter:drop-shadow(0 4px 16px rgba(0,0,0,.4)); cursor:pointer;" onclick="window.open(this.src)">
     </div>
   </div>
 </div>
 
 <!-- Sidebar -->
 <aside class="sidebar" id="sidebar" style="display:none;">
-  <div style="padding:1.25rem; border-bottom:1px solid var(--border); text-align:center;">
-    <div class="gear-icon" style="font-size:2.5rem;">⚙️</div>
+  <div style="padding:.75rem; border-bottom:1px solid var(--border); text-align:center;">
+    <div class="gear-icon" style="font-size:2rem;">⚙️</div>
     <h1 style="color:#fff; font-weight:800; font-size:1.25rem; margin-top:.25rem;">COE CRM</h1>
     <p style="color:var(--text3); font-size:.75rem; margin-top:.25rem;" id="sidebar-subtitle">Kundeoppfølging</p>
     <div style="margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border);">
@@ -323,12 +359,12 @@
     <div class="nav-item" data-route="#/innstillinger" onclick="navigate('#/innstillinger')">⚙️ <span>Innstillinger</span></div>
   </nav>
   <!-- Sidebar confirmed appointments -->
-  <div id="sidebar-confirmed" style="margin-top:.75rem; padding:0 .75rem; border-top:1px solid var(--border); padding-top:.75rem;">
+  <div id="sidebar-confirmed" style="margin-top:.5rem; padding:0 .5rem; border-top:1px solid var(--border); padding-top:.5rem; overflow-y:auto; flex:1; min-height:0;">
     <div style="font-size:.7rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem; padding-left:.5rem;">✅ Bekreftede timer <span id="sidebar-conf-count" style="color:var(--green);"></span></div>
     <div id="sidebar-conf-list"></div>
   </div>
   <!-- Company list removed from sidebar — use Selskaper page instead -->
-  <div style="position:absolute; bottom:0; left:0; right:0; padding:1rem; border-top:1px solid var(--border);">
+  <div style="margin-top:auto; padding:.75rem; border-top:1px solid var(--border); flex-shrink:0;">
     <div style="color:var(--text3); font-size:.75rem; margin-bottom:.5rem; text-align:center;" id="sidebar-user"></div>
 
     <button class="btn" style="width:100%; color:var(--text2); background:transparent; font-size:.875rem; margin-bottom:.5rem;" onclick="location.reload()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🔄 Oppdater</button>
@@ -361,7 +397,7 @@
 
 <!-- Main -->
 <div class="main-content" id="main-wrapper" style="display:none;">
-  <div style="padding:1.5rem 3rem; min-height:100vh;" id="app"></div>
+  <div style="padding:1rem 1.5rem; min-height:100vh;" id="app"></div>
 </div>
 
 <script>
@@ -385,23 +421,18 @@ function isLoggedIn() {
   return s.isAdmin || (s.companyId && s.companyId !== '');
 }
 
-// Lockout: max 5 attempts, then locked for 15 min
-const _loginState = { attempts: 0, lockedUntil: null };
+// Lockout handled server-side (2 attempts, permanent lock)
+const _loginState = { locked: false };
 
 async function doLogin() {
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('login-error');
   errorEl.style.display = 'none';
 
-  // Check lockout
-  if (_loginState.lockedUntil && Date.now() < _loginState.lockedUntil) {
-    const minLeft = Math.ceil((_loginState.lockedUntil - Date.now()) / 60000);
-    errorEl.textContent = 'For mange forsøk. Kontakt admin for tilgang, eller prøv igjen om ' + minLeft + ' min.';
+  if (_loginState.locked) {
+    errorEl.textContent = 'Kontoen er sperret. Kontakt admin for å oppheve.';
     errorEl.style.display = '';
     return;
-  } else if (_loginState.lockedUntil && Date.now() >= _loginState.lockedUntil) {
-    _loginState.attempts = 0;
-    _loginState.lockedUntil = null;
   }
 
   if (!password) { errorEl.textContent = 'Skriv inn passord'; errorEl.style.display = ''; return; }
@@ -415,20 +446,17 @@ async function doLogin() {
     const data = await resp.json();
 
     if (data.success) {
-      _loginState.attempts = 0;
-      _loginState.lockedUntil = null;
+      _loginState.locked = false;
       sessionStorage.setItem('coe_is_admin', String(data.isAdmin));
       sessionStorage.setItem('coe_company_id', data.companyId ? String(data.companyId) : '');
       sessionStorage.setItem('coe_company_name', data.companyName || '');
       location.reload();
     } else {
-      _loginState.attempts++;
-      const left = 5 - _loginState.attempts;
-      if (left <= 0) {
-        _loginState.lockedUntil = Date.now() + 15 * 60 * 1000;
-        errorEl.textContent = 'For mange forsøk. Kontakt admin for tilgang, eller prøv igjen om 15 min.';
+      if (data.locked) {
+        _loginState.locked = true;
+        errorEl.textContent = 'Kontoen er sperret etter 2 forsøk. Kontakt admin for å oppheve.';
       } else {
-        errorEl.textContent = 'Feil passord (' + left + ' forsøk igjen)';
+        errorEl.textContent = data.error || 'Feil passord';
       }
       errorEl.style.display = '';
     }
@@ -553,7 +581,7 @@ function fmtDuration(seconds) {
 }
 function errorWarning(c) { return c.error_flag ? '<span class="error-warning" title="' + (c.error_details||'Feil under samtale') + '">⚠️ SE GJENNOM</span>' : ''; }
 function statusBadge(s) {
-  const map = { 'Booket':'badge-green','Inngått avtale':'badge-purple','Fullført':'badge-blue','Betalt':'badge-yellow','Avbestilt':'badge-red','Ny':'badge-gray' };
+  const map = { 'Booket':'badge-green','Inngått avtale':'badge-purple','Fullført':'badge-blue','Betalt':'badge-yellow','Avbestilt':'badge-red','Ikke møtt opp':'badge-orange','Ny':'badge-gray' };
   return `<span class="badge ${map[s]||'badge-gray'}">${s||'Ukjent'}</span>`;
 }
 function spinner() { return '<div class="spinner"></div>'; }
@@ -679,9 +707,9 @@ async function renderDashboard() {
   app().innerHTML = `<h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1.5rem;">Dashboard</h2>
     ${showCompanyFilter ? `<div style="margin-bottom:1rem;"><select id="dash-company" style="max-width:300px;" onchange="renderDashboard()"><option value="">Alle selskaper</option></select></div>` : ''}
     <div id="dash-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:2rem;">${spinner()}</div>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
-      <div class="stat-card"><h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Omsetning per månad</h3><div id="dash-chart" style="height:220px; display:flex; align-items:flex-end; gap:.5rem;">${spinner()}</div></div>
-      <div class="stat-card"><h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Siste bestillinger</h3><div id="dash-recent">${spinner()}</div></div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;" class="dash-bottom-grid">
+      <div class="stat-card dash-recent-card" style="order:2;"><h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Siste bestillinger</h3><div id="dash-recent">${spinner()}</div></div>
+      <div class="stat-card dash-chart-card" style="order:1;"><h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Omsetning per månad</h3><div id="dash-chart" style="height:220px; display:flex; align-items:flex-end; gap:.5rem;">${spinner()}</div></div>
     </div>`;
   try {
     let companyId = '';
@@ -738,19 +766,47 @@ async function renderDashboard() {
     window._dashboardCompanyId = companyId;
 
     $('dash-stats').innerHTML = `
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('all')"><p style="font-size:.875rem; color:var(--text3);">Total samtaler</p><p style="font-size:2rem; font-weight:700; margin-top:.25rem;">${totalCalls}</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket')"><p style="font-size:.875rem; color:var(--text3);">Booket via samtale</p><p style="font-size:2rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${bookingCalls}</p><p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">${bookingCallRate}% bestillingsrate</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Avbestilt')"><p style="font-size:.875rem; color:var(--text3);">Avslått/nei</p><p style="font-size:2rem; font-weight:700; color:#f87171; margin-top:.25rem;">${noBookingCalls}</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('hangup')"><p style="font-size:.875rem; color:var(--text3);">📞 Lagt på</p><p style="font-size:2rem; font-weight:700; color:#fb923c; margin-top:.25rem;">${hangupCalls}</p></div>
-      ${errorCalls > 0 ? `<div class="stat-card" style="border:2px solid #ef4444; animation: pulse-error 1.5s infinite;"><p style="font-size:.875rem; color:#f87171;">⚠️ Feil/krasj</p><p style="font-size:2rem; font-weight:700; color:#ef4444; margin-top:.25rem;">${errorCalls}</p></div>` : ''}
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket')"><p style="font-size:.875rem; color:var(--text3);">Booket</p><p style="font-size:2rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${booked}</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Inngått avtale')"><p style="font-size:.875rem; color:var(--text3);">Inngått avtale</p><p style="font-size:2rem; font-weight:700; color:#a78bfa; margin-top:.25rem;">${inngatt}</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Fullført')"><p style="font-size:.875rem; color:var(--text3);">Fullført</p><p style="font-size:2rem; font-weight:700; color:#60a5fa; margin-top:.25rem;">${completed}</p></div>
-      <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Betalt')"><p style="font-size:.875rem; color:var(--text3);">Betalt</p><p style="font-size:2rem; font-weight:700; color:#fbbf24; margin-top:.25rem;">${paid}</p></div>`;
+      <!-- Totaloversikt -->
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; grid-column:1/-1;">
+        <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('all')" style="flex:1; min-width:150px;"><p style="font-size:.875rem; color:var(--text3);">📊 Total samtaler</p><p style="font-size:2rem; font-weight:700; margin-top:.25rem;">${totalCalls}</p></div>
+        ${errorCalls > 0 ? `<div class="stat-card" style="flex:1; min-width:150px; border:2px solid #ef4444; animation: pulse-error 1.5s infinite;"><p style="font-size:.875rem; color:#f87171;">⚠️ Feil/krasj</p><p style="font-size:2rem; font-weight:700; color:#ef4444; margin-top:.25rem;">${errorCalls}</p></div>` : ''}
+      </div>
+      <!-- MASTER: Booket -->
+      <div style="grid-column:1/-1; background:linear-gradient(135deg,#16a34a11,#16a34a22); border:2px solid #22c55e44; border-radius:.75rem; padding:1rem;">
+        <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem; cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'grid':'none'">
+          <span style="font-size:1.1rem;">✅</span>
+          <span style="font-weight:700; font-size:1rem; color:#4ade80;">Booket</span>
+          <span style="font-size:1.5rem; font-weight:800; color:#4ade80; margin-left:auto;">${booked}</span>
+          <span style="font-size:.7rem; color:#4ade80; margin-left:.25rem;">▼</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:.5rem;">
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket','samtale')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">📞 Via samtale</p><p style="font-size:1.5rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${bookingCalls}</p><p style="font-size:.65rem; color:var(--text3);">${bookingCallRate}% rate</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket','chatbot')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">💬 Via chatbot</p><p style="font-size:1.5rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${allCustomers.filter(c=>c.source==='Chatbot'&&c.status==='Booket').length}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Booket','melding')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">✉️ Via melding</p><p style="font-size:1.5rem; font-weight:700; color:#4ade80; margin-top:.25rem;">${allCustomers.filter(c=>c.source==='Manuell'&&c.status==='Booket').length}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('confirmed')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">☑️ Bekreftet</p><p style="font-size:1.5rem; font-weight:700; color:#34d399; margin-top:.25rem;">${allCustomers.filter(c=>c.confirmation_status==='confirmed').length}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Inngått avtale')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">🤝 Inngått avtale</p><p style="font-size:1.5rem; font-weight:700; color:#a78bfa; margin-top:.25rem;">${inngatt}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Fullført')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">💰 Fullført & betalt</p><p style="font-size:1.5rem; font-weight:700; color:#fbbf24; margin-top:.25rem;">${completed + paid}</p></div>
+        </div>
+      </div>
+      <!-- MASTER: Ikke fullført -->
+      <div style="grid-column:1/-1; background:linear-gradient(135deg,#ef444411,#ef444422); border:2px solid #ef444444; border-radius:.75rem; padding:1rem;">
+        <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem; cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'grid':'none'">
+          <span style="font-size:1.1rem;">❌</span>
+          <span style="font-weight:700; font-size:1rem; color:#f87171;">Ikke fullført</span>
+          <span style="font-size:1.5rem; font-weight:800; color:#f87171; margin-left:auto;">${noBookingCalls + hangupCalls + allCustomers.filter(c=>c.status==='Ikke møtt opp').length}</span>
+          <span style="font-size:.7rem; color:#f87171; margin-left:.25rem;">▼</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:.5rem;">
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Avbestilt')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">🚫 Avslått/nei</p><p style="font-size:1.5rem; font-weight:700; color:#f87171; margin-top:.25rem;">${noBookingCalls}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('hangup')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">📞 Lagt på</p><p style="font-size:1.5rem; font-weight:700; color:#fb923c; margin-top:.25rem;">${hangupCalls}</p></div>
+          <div class="stat-card stat-card-btn" onclick="showDashFilteredCustomers('Ikke møtt opp')" style="margin:0;"><p style="font-size:.75rem; color:var(--text3);">👻 Ikke møtt opp</p><p style="font-size:1.5rem; font-weight:700; color:#f59e0b; margin-top:.25rem;">${allCustomers.filter(c=>c.status==='Ikke møtt opp').length}</p></div>
+        </div>
+      </div>
+`;
 
     // Known Issues per selskap — egen seksjon
     try {
-      const issues = JSON.parse(selectedCompany.known_issues || '[]');
+      const issues = JSON.parse((selectedCompany && selectedCompany.known_issues) || '[]');
       if (issues.length > 0) {
         $('dash-stats').innerHTML += `
           <div style="grid-column: 1 / -1; background:linear-gradient(135deg,#fff5f5,#ffe0e0);border:2px solid #fc8181;border-radius:16px;padding:16px;margin-top:8px">
@@ -794,13 +850,19 @@ async function renderDashboard() {
 }
 
 // ── Dashboard filter by stat card ──
-function showDashFilteredCustomers(status) {
+function showDashFilteredCustomers(status, source) {
   const allCustomers = window._dashboardCustomers || [];
   let filtered = allCustomers;
   let title = 'Alle kunder';
-  if (status && status !== 'all') {
+  if (status === 'confirmed') {
+    filtered = allCustomers.filter(c => c.confirmation_status === 'confirmed');
+    title = 'Bekreftet (' + filtered.length + ')';
+  } else if (status && status !== 'all') {
     filtered = allCustomers.filter(c => c.status === status);
-    title = status + ' (' + filtered.length + ')';
+    if (source === 'samtale') filtered = filtered.filter(c => c.source === 'Telefon');
+    else if (source === 'chatbot') filtered = filtered.filter(c => c.source === 'Chatbot');
+    else if (source === 'melding') filtered = filtered.filter(c => c.source === 'Manuell');
+    title = status + (source ? ' via ' + source : '') + ' (' + filtered.length + ')';
   } else {
     title = 'Alle kunder (' + filtered.length + ')';
   }
@@ -951,14 +1013,37 @@ async function renderCompanyDetail(id) {
         </div>
       </div>
 
-      <!-- Feature toggles — visible status -->
-      <div style="display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem;">
-        <span class="badge ${c.feature_phone !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📞 Telefon ${c.feature_phone !== false ? 'PÅ' : 'AV'}</span>
-        <span class="badge ${c.feature_chatbot !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">💬 Chatbot ${c.feature_chatbot !== false ? 'PÅ' : 'AV'}</span>
-        <span class="badge ${c.feature_calendar !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📅 Kalender ${c.feature_calendar !== false ? 'PÅ' : 'AV'}</span>
-        <span class="badge ${c.feature_messages !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">✉️ Meldinger ${c.feature_messages !== false ? 'PÅ' : 'AV'}</span>
-        <span class="badge ${c.feature_base44 !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">🌐 Base44 ${c.feature_base44 !== false ? 'PÅ' : 'AV'}</span>
-        <span class="badge ${c.feature_inbound_sms === true ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📥 SMS ${c.feature_inbound_sms === true ? 'PÅ' : 'AV'}</span>
+      <!-- Feature toggles — 3 grupper: INFO INN, INFO UT, Base44 -->
+      <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
+        <!-- INFO INN -->
+        <div style="position:relative;" id="info-in-wrap-${c.id}">
+          <div style="display:flex; align-items:center; gap:.35rem;">
+            <button onclick="toggleMasterFeature(${c.id},'feature_info_in',this,'info-in')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_in !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_in !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_in !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_in" data-on="${c.feature_info_in !== false}">📥 INFO INN ${c.feature_info_in !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleDropdown('info-in-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
+          </div>
+          <div id="info-in-sub-${c.id}" style="display:none; position:absolute; top:100%; left:0; z-index:50; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem; min-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.5);">
+            <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Innkommende kanaler</div>
+            <button onclick="toggleFeature(${c.id},'feature_phone',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_phone !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_phone !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_phone !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_phone" data-on="${c.feature_phone !== false}">📞 Telefon ${c.feature_phone !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_chatbot',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_chatbot !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_chatbot" data-on="${c.feature_chatbot !== false}">💬 Chatbot ${c.feature_chatbot !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_inbound_sms',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'}; background:${c.feature_inbound_sms === true ? '#16a34a22' : '#ef444422'}; color:${c.feature_inbound_sms === true ? '#22c55e' : '#ef4444'};" data-feat="feature_inbound_sms" data-on="${c.feature_inbound_sms === true}">📥 Kundemeldinger til bedriftsnr. ${c.feature_inbound_sms === true ? 'PÅ' : 'AV'}</button>
+          </div>
+        </div>
+        <!-- INFO UT -->
+        <div style="position:relative;" id="info-out-wrap-${c.id}">
+          <div style="display:flex; align-items:center; gap:.35rem;">
+            <button onclick="toggleMasterFeature(${c.id},'feature_info_out',this,'info-out')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_out !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_out !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_out !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_out" data-on="${c.feature_info_out !== false}">📤 INFO UT ${c.feature_info_out !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleDropdown('info-out-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
+          </div>
+          <div id="info-out-sub-${c.id}" style="display:none; position:absolute; top:100%; left:0; z-index:50; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem; min-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.5);">
+            <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Utgående meldinger</div>
+            <button onclick="toggleFeature(${c.id},'feature_employee_alert',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_employee_alert !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_employee_alert" data-on="${c.feature_employee_alert !== false}">📋 Ansattvarsling ${c.feature_employee_alert !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_auto_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_auto_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_auto_confirm" data-on="${c.feature_auto_confirm !== false}">📨 Auto-bekreftelse ${c.feature_auto_confirm !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_customer_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_customer_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_customer_confirm" data-on="${c.feature_customer_confirm !== false}">✅ Kundebekreftelse ${c.feature_customer_confirm !== false ? 'PÅ' : 'AV'}</button>
+            <button onclick="toggleFeature(${c.id},'feature_reminder',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_reminder !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_reminder !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_reminder !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_reminder" data-on="${c.feature_reminder !== false}">⏰ Påminnelse ${c.feature_reminder !== false ? 'PÅ' : 'AV'}</button>
+          </div>
+        </div>
+        <!-- Base44 -->
+        <button onclick="toggleFeature(${c.id},'feature_base44',this)" class="btn" style="font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_base44 !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_base44 !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_base44 !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_base44" data-on="${c.feature_base44 !== false}">🌐 Base44 ${c.feature_base44 !== false ? 'PÅ' : 'AV'}</button>
       </div>
 
       <div class="phone-highlight" style="margin-bottom:1.5rem;">
@@ -976,11 +1061,18 @@ async function renderCompanyDetail(id) {
         <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
       </div>` : ''}
 
-      <!-- 1. Pending + Nye innringere — side by side -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
-        <div id="cd-pending"></div>
+      <!-- 1. Pending -->
+      <div id="cd-pending" style="margin-bottom:1rem;"></div>
+
+      <!-- 2. Source boxes: Telefon / Chatbot / Meldinger — side by side -->
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:1rem; margin-bottom:1.5rem;">
         <div id="cd-recent-callers"></div>
+        <div id="cd-recent-chatbot"></div>
+        <div id="cd-recent-messages"></div>
       </div>
+
+      <!-- 3. Alle kontakter samlet -->
+      <div id="cd-all-contacts" style="margin-bottom:1.5rem;"></div>
 
       <!-- 2. Kommende timer -->
       <div id="cd-upcoming" style="margin-bottom:1.5rem;"></div>
@@ -1019,7 +1111,15 @@ async function renderCompanyDetail(id) {
         <div id="company-improvements-summary">Laster...</div>
       </div>
 
-      <!-- 5. Filter bar -->
+      <!-- 5. Source tabs + Filter bar -->
+      <div class="stat-card" style="margin-bottom:.75rem;">
+        <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+          <button class="btn source-tab active" onclick="setSourceFilter('',${id},this)" style="font-size:.8rem; padding:.4rem .8rem; border-radius:99px; font-weight:600;">Alle</button>
+          <button class="btn source-tab" onclick="setSourceFilter('Telefon',${id},this)" style="font-size:.8rem; padding:.4rem .8rem; border-radius:99px; font-weight:600;">📞 Telefon</button>
+          <button class="btn source-tab" onclick="setSourceFilter('Chatbot',${id},this)" style="font-size:.8rem; padding:.4rem .8rem; border-radius:99px; font-weight:600;">💬 Chatbot</button>
+          <button class="btn source-tab" onclick="setSourceFilter('Melding',${id},this)" style="font-size:.8rem; padding:.4rem .8rem; border-radius:99px; font-weight:600;">📱 Melding</button>
+        </div>
+      </div>
       <div class="stat-card" style="margin-bottom:1.5rem;">
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:.75rem;">
           <input id="cd-q" placeholder="Søk navn, telefon..." oninput="filterCompanyCustomers(${id})">
@@ -1031,6 +1131,7 @@ async function renderCompanyDetail(id) {
             <option value="Fullført">Fullført</option>
             <option value="Betalt">Betalt</option>
             <option value="Avbestilt">Avbestilt</option>
+            <option value="Ikke møtt opp">Ikke møtt opp</option>
           </select>
           <input id="cd-date" type="date" onchange="filterCompanyCustomers(${id})">
         </div>
@@ -1061,6 +1162,9 @@ async function renderCompanyDetail(id) {
 
     // Load recent callers (3 nyligste, utvidbar)
     renderRecentCallers(customers);
+    renderRecentChatbot(customers);
+    renderRecentMessages(customers);
+    renderAllContacts(customers);
 
     // Load completed customers
     loadCompletedCustomers(customers);
@@ -1075,6 +1179,26 @@ async function renderCompanyDetail(id) {
   }
 }
 
+
+// Source filter for company customers
+let _currentSourceFilter = '';
+function setSourceFilter(source, companyId, btn) {
+  _currentSourceFilter = source;
+  document.querySelectorAll('.source-tab').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = '#1e293b';
+    b.style.color = 'var(--text3)';
+    b.style.border = '1px solid var(--border)';
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.style.background = 'var(--accent)';
+    btn.style.color = '#fff';
+    btn.style.border = '1px solid var(--accent)';
+  }
+  filterCompanyCustomers(companyId);
+}
+
 function filterCompanyCustomers(companyId) {
   const customers = window._companyCustomers || [];
   const q = ($('cd-q')?.value || '').toLowerCase();
@@ -1082,6 +1206,9 @@ function filterCompanyCustomers(companyId) {
   const date = $('cd-date')?.value || '';
 
   let filtered = customers;
+  if (_currentSourceFilter) {
+    filtered = filtered.filter(c => (c.source||'Telefon') === _currentSourceFilter);
+  }
   if (q) {
     filtered = filtered.filter(c =>
       (c.name||'').toLowerCase().includes(q) ||
@@ -1249,6 +1376,113 @@ function toggleRecentCallers() {
   }
 }
 
+function renderRecentChatbot(customers) {
+  const el = $('cd-recent-chatbot');
+  if (!el) return;
+  const chatbotCustomers = customers.filter(c => c.source === 'Chatbot')
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  if (!chatbotCustomers.length) {
+    el.innerHTML = '<div class="stat-card" style="border-left:4px solid #8b5cf6; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:2rem; color:var(--text3);"><span style="font-size:2rem; margin-bottom:.5rem;">💬</span><p style="font-size:.875rem;">Ingen chatbot-henvendelser</p></div>';
+    return;
+  }
+  const SHOW = 3;
+  const visible = chatbotCustomers.slice(0, SHOW);
+  const hidden = chatbotCustomers.slice(SHOW);
+  el.innerHTML = '<div class="stat-card" style="border-left:4px solid #8b5cf6; height:100%;">' +
+    '<h3 style="font-weight:700; color:#8b5cf6; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem;">' +
+    '<span style="font-size:1.25rem;">💬</span> Chatbot-henvendelser (' + chatbotCustomers.length + ')</h3>' +
+    '<div style="display:flex; flex-direction:column; gap:.5rem;">' +
+    visible.map(c => sourceRow(c, '#8b5cf6')).join('') +
+    (hidden.length ? '<div id="cb-hidden" style="display:none; flex-direction:column; gap:.5rem;">' +
+      hidden.map(c => sourceRow(c, '#8b5cf6')).join('') + '</div>' +
+      '<button class="btn btn-secondary" onclick="toggleHidden(\'cb-hidden\',this,' + chatbotCustomers.length + ',\'chatbot\')" style="margin-top:.5rem; font-size:.875rem; padding:.5rem 1rem; align-self:flex-start;">▼ Vis alle ' + chatbotCustomers.length + '</button>' : '') +
+    '</div></div>';
+}
+
+function renderRecentMessages(customers) {
+  const el = $('cd-recent-messages');
+  if (!el) return;
+  const msgCustomers = customers.filter(c => c.source === 'Manuell' || c.source === 'Melding')
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  if (!msgCustomers.length) {
+    el.innerHTML = '<div class="stat-card" style="border-left:4px solid #f59e0b; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:2rem; color:var(--text3);"><span style="font-size:2rem; margin-bottom:.5rem;">📱</span><p style="font-size:.875rem;">Ingen meldinger inn</p></div>';
+    return;
+  }
+  const SHOW = 3;
+  const visible = msgCustomers.slice(0, SHOW);
+  const hidden = msgCustomers.slice(SHOW);
+  el.innerHTML = '<div class="stat-card" style="border-left:4px solid #f59e0b; height:100%;">' +
+    '<h3 style="font-weight:700; color:#f59e0b; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem;">' +
+    '<span style="font-size:1.25rem;">📱</span> Meldinger inn (' + msgCustomers.length + ')</h3>' +
+    '<div style="display:flex; flex-direction:column; gap:.5rem;">' +
+    visible.map(c => sourceRow(c, '#f59e0b')).join('') +
+    (hidden.length ? '<div id="msg-hidden" style="display:none; flex-direction:column; gap:.5rem;">' +
+      hidden.map(c => sourceRow(c, '#f59e0b')).join('') + '</div>' +
+      '<button class="btn btn-secondary" onclick="toggleHidden(\'msg-hidden\',this,' + msgCustomers.length + ',\'meldinger\')" style="margin-top:.5rem; font-size:.875rem; padding:.5rem 1rem; align-self:flex-start;">▼ Vis alle ' + msgCustomers.length + '</button>' : '') +
+    '</div></div>';
+}
+
+function sourceRow(c, color) {
+  const dt = c.created_at ? fmtDateTime(c.created_at) : '–';
+  const srcIcon = c.source === 'Chatbot' ? '💬' : c.source === 'Manuell' || c.source === 'Melding' ? '📱' : '📞';
+  return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'' + color + '\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
+    '<div style="flex:1; min-width:0;">' +
+    '<div style="font-weight:600;">' + (c.name || 'Ukjent') + '</div>' +
+    '<div style="font-size:.75rem; color:var(--text3); margin-top:.125rem;">📅 ' + dt + ' • ' + srcIcon + ' ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div>' +
+    '</div><div>' + statusBadge(c.status) + '</div></div>';
+}
+
+function renderAllContacts(customers) {
+  const el = $('cd-all-contacts');
+  if (!el) return;
+  const sorted = [...customers].sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  if (!sorted.length) { el.innerHTML = ''; return; }
+  const SHOW = 5;
+  const visible = sorted.slice(0, SHOW);
+  const hidden = sorted.slice(SHOW);
+  el.innerHTML = '<div class="stat-card" style="border-left:4px solid #94a3b8;">' +
+    '<h3 style="font-weight:700; color:#94a3b8; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem;">' +
+    '<span style="font-size:1.25rem;">📋</span> Alle kontakter samlet (' + sorted.length + ')</h3>' +
+    '<div style="display:flex; flex-direction:column; gap:.5rem;">' +
+    visible.map(c => {
+      const srcIcon = c.source === 'Chatbot' ? '💬' : (c.source === 'Manuell' || c.source === 'Melding') ? '📱' : '📞';
+      const srcColor = c.source === 'Chatbot' ? '#8b5cf6' : (c.source === 'Manuell' || c.source === 'Melding') ? '#f59e0b' : '#3b82f6';
+      const dt = c.created_at ? fmtDateTime(c.created_at) : '–';
+      return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
+        '<div style="display:flex; align-items:center; gap:.75rem; flex:1; min-width:0;">' +
+        '<span style="font-size:1.1rem; min-width:1.5rem; text-align:center;" title="' + (c.source||'Telefon') + '">' + srcIcon + '</span>' +
+        '<div><div style="font-weight:600;">' + (c.name || 'Ukjent') + ' <span style="font-size:.65rem; padding:.125rem .4rem; border-radius:.25rem; background:' + srcColor + '22; color:' + srcColor + '; font-weight:500;">' + (c.source||'Telefon') + '</span></div>' +
+        '<div style="font-size:.75rem; color:var(--text3);">📅 ' + dt + ' • ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div></div></div>' +
+        '<div>' + statusBadge(c.status) + '</div></div>';
+    }).join('') +
+    (hidden.length ? '<div id="all-hidden" style="display:none; flex-direction:column; gap:.5rem;">' +
+      hidden.map(c => {
+        const srcIcon2 = c.source === 'Chatbot' ? '💬' : (c.source === 'Manuell' || c.source === 'Melding') ? '📱' : '📞';
+        const srcColor2 = c.source === 'Chatbot' ? '#8b5cf6' : (c.source === 'Manuell' || c.source === 'Melding') ? '#f59e0b' : '#3b82f6';
+        const dt2 = c.created_at ? fmtDateTime(c.created_at) : '–';
+        return '<div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; background:var(--bg); border:1px solid var(--border); cursor:pointer; transition:border-color .15s;" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'" onclick="navigate(\'#/kunde/' + c.id + '\')">' +
+          '<div style="display:flex; align-items:center; gap:.75rem; flex:1; min-width:0;">' +
+          '<span style="font-size:1.1rem; min-width:1.5rem; text-align:center;">' + srcIcon2 + '</span>' +
+          '<div><div style="font-weight:600;">' + (c.name || 'Ukjent') + ' <span style="font-size:.65rem; padding:.125rem .4rem; border-radius:.25rem; background:' + srcColor2 + '22; color:' + srcColor2 + '; font-weight:500;">' + (c.source||'Telefon') + '</span></div>' +
+          '<div style="font-size:.75rem; color:var(--text3);">📅 ' + dt2 + ' • ' + fmtPhone(c.phone) + (c.service_requested ? ' • ' + c.service_requested : '') + '</div></div></div>' +
+          '<div>' + statusBadge(c.status) + '</div></div>';
+      }).join('') + '</div>' +
+      '<button class="btn btn-secondary" onclick="toggleHidden(\'all-hidden\',this,' + sorted.length + ',\'kontakter\')" style="margin-top:.5rem; font-size:.875rem; padding:.5rem 1rem; align-self:flex-start;">▼ Vis alle ' + sorted.length + ' kontakter</button>' : '') +
+    '</div></div>';
+}
+
+function toggleHidden(id, btn, total, label) {
+  const h = $(id);
+  if (!h || !btn) return;
+  if (h.style.display === 'none') {
+    h.style.display = 'flex';
+    btn.textContent = '▲ Vis færre';
+  } else {
+    h.style.display = 'none';
+    btn.textContent = '▼ Vis alle ' + total + ' ' + label;
+  }
+}
+
 // ── Pending Approvals ──
 async function loadPendingApprovals(companyId, industry) {
   const el = $('cd-pending');
@@ -1309,6 +1543,92 @@ function togglePendingList() {
   } else {
     h.style.display = 'none';
     b.textContent = b.textContent.replace('▲ Skjul', '▼ Vis alle');
+  }
+}
+
+function toggleDropdown(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateBtnVisuals(btn, isOn, label) {
+  const color = isOn ? '#22c55e' : '#ef4444';
+  btn.setAttribute('data-on', String(isOn));
+  btn.style.borderColor = color;
+  btn.style.background = isOn ? '#16a34a22' : '#ef444422';
+  btn.style.color = color;
+  btn.textContent = `${label} ${isOn ? 'PÅ' : 'AV'}`;
+}
+
+const FEAT_LABELS = {
+  feature_phone: '📞 Telefon', feature_chatbot: '💬 Chatbot',
+  feature_inbound_sms: '📥 Kundemeldinger til bedriftsnr.',
+  feature_employee_alert: '📋 Ansattvarsling', feature_auto_confirm: '📨 Auto-bekreftelse',
+  feature_customer_confirm: '✅ Kundebekreftelse', feature_reminder: '⏰ Påminnelse',
+  feature_info_in: '📥 INFO INN', feature_info_out: '📤 INFO UT',
+  feature_base44: '🌐 Base44', feature_auto_confirm: '📨 Auto-bekreftelse'
+};
+
+const INFO_IN_SUBS = ['feature_phone','feature_chatbot','feature_inbound_sms'];
+const INFO_OUT_SUBS = ['feature_employee_alert','feature_auto_confirm','feature_customer_confirm','feature_reminder'];
+
+async function toggleFeature(companyId, featureName, btn) {
+  const isOn = btn.getAttribute('data-on') === 'true';
+  const newVal = !isOn;
+  try {
+    const res = await fetch(`/api/companies/${companyId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [featureName]: newVal })
+    });
+    if (!res.ok) throw new Error('Feilet');
+    const label = FEAT_LABELS[featureName] || featureName;
+    updateBtnVisuals(btn, newVal, label);
+    showToast(`${label} er nå ${newVal ? 'PÅ' : 'AV'}`);
+  } catch(e) {
+    showToast('❌ Kunne ikke endre feature: ' + e.message);
+  }
+}
+
+async function toggleMasterFeature(companyId, featureName, btn, groupPrefix) {
+  const isOn = btn.getAttribute('data-on') === 'true';
+  const newVal = !isOn;
+  const subs = groupPrefix === 'info-in' ? INFO_IN_SUBS : INFO_OUT_SUBS;
+  try {
+    const body = { [featureName]: newVal };
+    const res = await fetch(`/api/companies/${companyId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error('Feilet');
+    const label = FEAT_LABELS[featureName] || featureName;
+    updateBtnVisuals(btn, newVal, label);
+    // When master OFF → visually gray out all sub-buttons
+    const subContainer = document.getElementById(`${groupPrefix}-sub-${companyId}`);
+    if (subContainer) {
+      subContainer.querySelectorAll('.sub-toggle-btn').forEach(sb => {
+        if (!newVal) {
+          // Master OFF: all subs appear red/disabled
+          sb.style.borderColor = '#ef4444';
+          sb.style.background = '#ef444422';
+          sb.style.color = '#ef4444';
+          sb.style.opacity = '0.5';
+          sb.style.pointerEvents = 'none';
+        } else {
+          // Master ON: restore individual states
+          const subOn = sb.getAttribute('data-on') === 'true';
+          const subColor = subOn ? '#22c55e' : '#ef4444';
+          sb.style.borderColor = subColor;
+          sb.style.background = subOn ? '#16a34a22' : '#ef444422';
+          sb.style.color = subColor;
+          sb.style.opacity = '1';
+          sb.style.pointerEvents = 'auto';
+        }
+      });
+    }
+    showToast(`${label} er nå ${newVal ? 'PÅ' : 'AV'}`);
+  } catch(e) {
+    showToast('❌ Kunne ikke endre feature: ' + e.message);
   }
 }
 
@@ -1909,49 +2229,47 @@ async function openEditCompanyModal(id) {
             <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📋 Send uttrekk-SMS til ansatt (AI-oppsummering)</span>
           </label>
         </div>
-        <div style="padding:.75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-          <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-            <input type="checkbox" id="ec-requires-approval" ${c.requires_worker_approval ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
-            <span style="font-size:.875rem; font-weight:500; color:var(--text2);">Krever godkjenning fra ansatt før bekreftelse sendes til kunde</span>
-          </label>
-          <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">Hvis på: ansatt mottar SMS og må bekrefte før kunden får bekreftelse</p>
-        </div>
-        <h4 style="font-weight:600; font-size:.875rem; color:var(--text2); margin-top:.5rem;">Moduler</h4>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:.5rem;">
-          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+
+        <h4 style="font-weight:600; font-size:.875rem; color:var(--text2); margin-top:.5rem;">Funksjoner</h4>
+        <div style="display:flex; flex-direction:column; gap:.5rem;">
+          <div style="padding:.6rem .75rem; background:#0f4a2e30; border:1px solid #22c55e40; border-radius:.5rem;">
+            <p style="font-size:.7rem; color:#4ade80; font-weight:700; margin-bottom:.4rem;">📥 INFO INN</p>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.3rem;">
+              <input type="checkbox" id="ec-feat-phone" ${c.feature_phone !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">📞 Telefon AI</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.3rem;">
+              <input type="checkbox" id="ec-feat-chatbot" ${c.feature_chatbot !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">💬 Chatbot</span>
+            </label>
             <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-phone" ${c.feature_phone !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">📞 Telefon AI</span>
+              <input type="checkbox" id="ec-feat-inbound-sms" ${c.feature_inbound_sms === true ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">📥 Kundemeldinger til bedriftsnr.</span>
+            </label>
+          </div>
+          <div style="padding:.6rem .75rem; background:#1e3a5f30; border:1px solid #3b82f640; border-radius:.5rem;">
+            <p style="font-size:.7rem; color:#60a5fa; font-weight:700; margin-bottom:.4rem;">📤 INFO UT</p>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.3rem;">
+              <input type="checkbox" id="ec-feat-employee-alert" ${c.feature_employee_alert !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">📋 Ansattvarsling etter samtale</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.3rem;">
+              <input type="checkbox" id="ec-feat-auto-confirm" ${c.feature_auto_confirm !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">📨 Auto-bekreftelse "Vi kommer tilbake TIL DEG"</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.3rem;">
+              <input type="checkbox" id="ec-feat-customer-confirm" ${c.feature_customer_confirm !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">✅ Kundebekreftelse ved ansatt-klikk</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-reminder" ${c.feature_reminder !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">⏰ Påminnelse før avtale</span>
             </label>
           </div>
           <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
             <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-chatbot" ${c.feature_chatbot !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">💬 Chatbot</span>
-            </label>
-          </div>
-          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-calendar" ${c.feature_calendar !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">📅 Kalender</span>
-            </label>
-          </div>
-          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-messages" ${c.feature_messages !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">✉️ Meldinger</span>
-            </label>
-          </div>
-          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-base44" ${c.feature_base44 !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">🌐 Base44</span>
-            </label>
-          </div>
-          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-              <input type="checkbox" id="ec-feat-inbound-sms" ${c.feature_inbound_sms === true ? 'checked' : ''} style="width:1rem; height:1rem;">
-              <span style="font-size:.8rem; color:var(--text2);">📥 Inbound SMS</span>
+              <input type="checkbox" id="ec-feat-base44" ${c.feature_base44 !== false ? 'checked' : ''} style="width:1.1rem; height:1.1rem;">
+              <span style="font-size:.85rem; color:var(--text2);">🌐 Base44</span>
             </label>
           </div>
         </div>
@@ -1968,7 +2286,7 @@ function openNewCompanyModal() {
   overlay.className = 'modal-overlay';
   overlay.onclick = e => { if(e.target===overlay) overlay.remove(); };
   overlay.innerHTML = `<div class="modal">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;"><h3 style="font-size:1.125rem; font-weight:700;">Nytt selskap</h3><button onclick="this.closest('.modal-overlay').remove()" style="font-size:1.5rem; color:var(--text3); background:none; border:none; cursor:pointer;">&times;</button></div>
+    <div style="margin-bottom:1rem;"><h3 style="font-size:1.125rem; font-weight:700;">Nytt selskap</h3></div>
     <div style="display:flex; flex-direction:column; gap:1rem;">
       <div style="display:flex; flex-direction:column; align-items:center; gap:.75rem;">
         <label style="font-size:.875rem; font-weight:500; color:var(--text2);">Selskapslogo</label>
@@ -1991,38 +2309,49 @@ function openNewCompanyModal() {
       </div>
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Telefonnummer (kundetelefon)</label><input id="nc-phone2"></div>
       <div><label id="nc-worker-label" style="font-size:.875rem; font-weight:500; color:var(--text2);">Ansatt-telefon</label><input id="nc-montour-phone" placeholder="Telefonnummer"></div>
-      <div style="padding:.75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+      <!-- INFO INN -->
+      <div style="padding:.75rem; background:#0f4a2e30; border:1px solid #22c55e40; border-radius:.5rem;">
+        <p style="font-size:.75rem; color:#4ade80; font-weight:700; margin-bottom:.5rem;">📥 INFO INN</p>
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
+          <input type="checkbox" id="nc-feat-phone" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📞 Telefon AI</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
+          <input type="checkbox" id="nc-feat-chatbot" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">💬 Chatbot</span>
+        </label>
         <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+          <input type="checkbox" id="nc-feat-inbound-sms" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📥 Kundemeldinger til bedriftsnr.</span>
+        </label>
+      </div>
+      <!-- INFO UT -->
+      <div style="padding:.75rem; background:#1e3a5f30; border:1px solid #3b82f640; border-radius:.5rem;">
+        <p style="font-size:.75rem; color:#60a5fa; font-weight:700; margin-bottom:.5rem;">📤 INFO UT</p>
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
           <input type="checkbox" id="nc-sms-notify" checked style="width:1.1rem; height:1.1rem;">
-          <span id="nc-sms-label" style="font-size:.875rem; font-weight:500; color:var(--text2);">Varsle ansatt via SMS ved nye bestillinger</span>
+          <span id="nc-sms-label" style="font-size:.875rem; font-weight:500; color:var(--text2);">📋 Ansattvarsling etter samtale</span>
         </label>
-        <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">Hvis av: kun kalender brukes, ingen SMS sendes til ansatt</p>
-      </div>
-      <div style="padding:.75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
+          <input type="checkbox" id="nc-feat-auto-confirm" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📨 Auto-bekreftelse "Vi kommer tilbake TIL DEG"</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
           <input type="checkbox" id="nc-sms-customer" checked style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">Send bekreftelse-SMS til kunde</span>
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">✅ Kundebekreftelse ved ansatt-klikk</span>
         </label>
-      </div>
-      <div style="padding:.75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
-        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
           <input type="checkbox" id="nc-sms-reminder" checked style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">Send påminnelse-SMS til kunde</span>
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">⏰ Påminnelse før avtale</span>
         </label>
+
       </div>
+      <!-- Base44 -->
       <div style="padding:.75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
         <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
-          <input type="checkbox" id="nc-sms-extract" checked style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📋 Send uttrekk-SMS til ansatt (AI-oppsummering)</span>
+          <input type="checkbox" id="nc-feat-base44" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">🌐 Base44</span>
         </label>
-        <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">Etter hver samtale: AI trekker ut viktigste info og sender til ansatt</p>
-      </div>
-      <div style="border-top:1px solid var(--border); padding-top:.75rem; margin-top:.5rem;">
-        <div style="display:flex; align-items:center; gap:.75rem;">
-          <input type="checkbox" id="nc-requires-approval" style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">Krever godkjenning fra ansatt før bekreftelse sendes til kunde</span>
-        </div>
-        <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">Hvis på: ansatt mottar SMS og må bekrefte før kunden får bekreftelse</p>
       </div>
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Sjefens telefon</label><input id="nc-boss-phone" type="tel" placeholder="Telefonnummer til sjefen"></div>
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Sjefens epost</label><input id="nc-boss-email" type="email" placeholder="Epost til sjefen"></div>
@@ -2156,7 +2485,18 @@ async function createCompany() {
     sms_notify_worker: $('nc-sms-notify')?.checked ?? true,
     sms_confirm_customer: $('nc-sms-customer')?.checked ?? true,
     sms_remind_customer: $('nc-sms-reminder')?.checked ?? true,
-    sms_extract_employee: $('nc-sms-extract')?.checked ?? true,
+    sms_extract_employee: $('nc-sms-notify')?.checked ?? true,
+    feature_phone: $('nc-feat-phone')?.checked ?? true,
+    feature_chatbot: $('nc-feat-chatbot')?.checked ?? true,
+    feature_inbound_sms: $('nc-feat-inbound-sms')?.checked ?? true,
+    feature_employee_alert: $('nc-sms-notify')?.checked ?? true,
+    feature_auto_confirm: $('nc-feat-auto-confirm')?.checked ?? true,
+    feature_customer_confirm: $('nc-sms-customer')?.checked ?? true,
+    feature_reminder: $('nc-sms-reminder')?.checked ?? true,
+    feature_base44: $('nc-feat-base44')?.checked ?? true,
+    feature_info_in: true,
+    feature_info_out: true,
+    feature_calendar: true,
     requires_worker_approval: $('nc-requires-approval')?.checked || false,
     logo_url: companyLogoData || null,
     greeting
@@ -2220,10 +2560,15 @@ async function updateCompany(id) {
     requires_worker_approval: $('ec-requires-approval')?.checked || false,
     feature_phone: $('ec-feat-phone')?.checked ?? true,
     feature_chatbot: $('ec-feat-chatbot')?.checked ?? true,
-    feature_calendar: $('ec-feat-calendar')?.checked ?? true,
-    feature_messages: $('ec-feat-messages')?.checked ?? true,
+    feature_calendar: true,
     feature_base44: $('ec-feat-base44')?.checked ?? true,
     feature_inbound_sms: $('ec-feat-inbound-sms')?.checked || false,
+    feature_employee_alert: $('ec-feat-employee-alert')?.checked ?? true,
+    feature_auto_confirm: $('ec-feat-auto-confirm')?.checked ?? true,
+    feature_customer_confirm: $('ec-feat-customer-confirm')?.checked ?? true,
+    feature_reminder: $('ec-feat-reminder')?.checked ?? true,
+    feature_info_in: true,
+    feature_info_out: true,
   };
   // Include logo if changed
   if (editLogoData !== undefined) {
@@ -2293,6 +2638,14 @@ async function renderCustomerDetail(id) {
               <span id="calls-count-badge" style="font-size:.8rem; background:var(--accent); color:#fff; padding:.2rem .6rem; border-radius:99px; font-weight:700;"></span>
             </div>
             <div id="calls-section">${spinner()}</div>
+          </div>
+          <!-- 📨 MELDINGER — Alle SMS for denne kunden -->
+          <div class="stat-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+              <h3 style="font-weight:600; color:var(--text2); font-size:1.125rem;">📨 Meldinger</h3>
+              <span id="msgs-count-badge" style="font-size:.8rem; background:#8b5cf6; color:#fff; padding:.2rem .6rem; border-radius:99px; font-weight:700;"></span>
+            </div>
+            <div id="msgs-section">${spinner()}</div>
           </div>
         </div>
         <div style="display:flex; flex-direction:column; gap:1rem;">
@@ -2422,6 +2775,47 @@ async function renderCustomerDetail(id) {
           <p style="font-size:.875rem;">Kunne ikke laste henvendelser</p>
         </div>`;
     }
+
+    // Load messages for this customer
+    try {
+      const msgs = await api(`/api/customers/${id}/messages`);
+      const msgsList = msgs || [];
+      const msgBadge = $('msgs-count-badge');
+      if (msgBadge) msgBadge.textContent = msgsList.length + ' melding' + (msgsList.length !== 1 ? 'er' : '');
+      if (msgsList.length) {
+        const typeLabels = {
+          'sms': '📱 SMS', 'auto_confirm': '📨 Auto-bekreftelse', 'confirmation': '✅ Bekreftelse',
+          'reminder': '⏰ Påminnelse', 'uttrekk_employee': '📋 Uttrekk til ansatt',
+          'error_alert': '⚠️ Feilvarsel', 'extraction': '📋 Uttrekk'
+        };
+        const dirLabels = { 'outbound': '→ Sendt', 'inbound': '← Mottatt' };
+        const statusColors = { 'sent': '#22c55e', 'failed': '#ef4444', 'pending': '#f59e0b' };
+        $('msgs-section').innerHTML = `<div style="max-height:400px; overflow-y:auto;">` + msgsList.map(m => {
+          const isInbound = m.direction === 'inbound';
+          const typeLabel = typeLabels[m.message_type] || '📱 SMS';
+          const dirLabel = dirLabels[m.direction] || '→ Sendt';
+          const statusColor = statusColors[m.status] || '#94a3b8';
+          const body = m.message_body || m.content || '(ingen tekst)';
+          return `<div style="padding:.6rem .8rem; margin-bottom:.4rem; border-radius:.5rem; background:${isInbound ? '#1e3a5f20' : '#1e293b'}; border-left:3px solid ${isInbound ? '#3b82f6' : '#22c55e'};">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.3rem;">
+              <div style="display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;">
+                <span style="font-size:.75rem; font-weight:700; color:${isInbound ? '#60a5fa' : '#4ade80'};">${typeLabel}</span>
+                <span style="font-size:.65rem; color:var(--text3);">${dirLabel}</span>
+                <span style="font-size:.65rem; background:${statusColor}22; color:${statusColor}; padding:.1rem .3rem; border-radius:99px;">${m.status||'sent'}</span>
+              </div>
+              <span style="font-size:.7rem; color:var(--text3);">${fmtDateTime(m.created_at||m.sent_at)}</span>
+            </div>
+            <div style="font-size:.8rem; color:var(--text2); white-space:pre-wrap; word-break:break-word; max-height:80px; overflow:hidden;">${escHtml(body.substring(0, 300))}${body.length > 300 ? '...' : ''}</div>
+            <div style="font-size:.65rem; color:var(--text3); margin-top:.2rem;">📱 ${m.recipient_phone || m.phone_to || '–'} · ${m.provider||'twilio'}</div>
+          </div>`;
+        }).join('') + '</div>';
+      } else {
+        $('msgs-section').innerHTML = '<div style="text-align:center; padding:1.5rem; color:var(--text3);"><p style="font-size:1.5rem;">📨</p><p style="font-size:.8rem;">Ingen meldinger ennå</p></div>';
+      }
+    } catch(e) {
+      $('msgs-section').innerHTML = '<div style="text-align:center; padding:1rem; color:var(--text3); font-size:.8rem;">Kunne ikke laste meldinger</div>';
+    }
+
   } catch(e) { $('cust-detail').innerHTML = '<p style="color:#f87171;">Feil ved lasting av kunde</p>'; }
 }
 
@@ -3231,7 +3625,7 @@ async function renderChat() {
 
   app().innerHTML = `
     <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1.5rem;">🤖 AI Test Chat</h2>
-    <div style="display:grid; grid-template-columns:1fr 300px; gap:1.5rem; height:calc(100vh - 140px);">
+    <div style="display:grid; grid-template-columns:1fr 300px; gap:1.5rem; height:calc(100vh - 180px);">
       <div class="stat-card" style="display:flex; flex-direction:column; padding:0; overflow:hidden;">
         <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
           <div style="display:flex; align-items:center; gap:.75rem;">
@@ -3392,16 +3786,16 @@ function clearChat() {
 async function renderAutoFixes() {
   app().innerHTML = `<h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1.5rem;">🔧 Auto-rettinger</h2>
     <p style="color:var(--text2); font-size:.875rem; margin-bottom:1.5rem;">Feil som KI-en fant i samtaler og rettet automatisk. Systemet lærer og forbedrer seg selv etter hver samtale.</p>
-    <div id="af-filters" style="display:flex; gap:.75rem; margin-bottom:1.5rem; flex-wrap:wrap;">
-      <select id="af-company" onchange="renderAutoFixesList()" style="max-width:250px;"><option value="">Alle selskaper</option></select>
-      <select id="af-severity" onchange="renderAutoFixesList()" style="max-width:180px;">
+    <div id="af-filters" style="display:flex; gap:.75rem; margin-bottom:1.5rem; flex-wrap:wrap; align-items:center;">
+      <select id="af-company" onchange="renderAutoFixesList()" style="max-width:200px; flex-shrink:0;"><option value="">Alle selskaper</option></select>
+      <select id="af-severity" onchange="renderAutoFixesList()" style="max-width:200px; flex-shrink:0;">
         <option value="">Alle alvorlighetsgrader</option>
         <option value="kritisk">🔴 Kritisk</option>
         <option value="viktig">🟡 Viktig</option>
         <option value="minor">🟢 Minor</option>
       </select>
-      <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; color:var(--text2); font-size:.875rem;">
-        <input type="checkbox" id="af-active" checked onchange="renderAutoFixesList()"> Vis kun aktive
+      <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; color:var(--text2); font-size:.85rem; background:var(--bg2); border:1px solid var(--border); border-radius:.5rem; padding:.4rem .75rem; white-space:nowrap;">
+        <input type="checkbox" id="af-active" checked onchange="renderAutoFixesList()" style="width:auto;"> ✅ Vis kun aktive
       </label>
     </div>
     <div id="af-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:1.5rem;"></div>
@@ -3428,7 +3822,7 @@ function renderAutoFixesList() {
   const severityFilter = $('af-severity')?.value || '';
   const activeOnly = $('af-active')?.checked;
 
-  let filtered = data;
+  let filtered = [...data].sort((a,b) => new Date(b.created_at||0) - new Date(a.created_at||0));
   if (companyFilter) filtered = filtered.filter(d => String(d.company_id) === companyFilter);
   if (severityFilter) filtered = filtered.filter(d => d.severity === severityFilter);
   if (activeOnly) filtered = filtered.filter(d => d.active);
@@ -3462,7 +3856,10 @@ function renderAutoFixesList() {
   const severityIcon = s => s === 'kritisk' ? '🔴' : s === 'viktig' ? '🟡' : '🟢';
   const severityColor = s => s === 'kritisk' ? '#fecaca' : s === 'viktig' ? '#fef3c7' : '#dcfce7';
 
-  $('af-list').innerHTML = filtered.map(fix => `
+  const showAll = window._afShowAll || false;
+  const displayItems = showAll ? filtered : filtered.slice(0, 3);
+  const hasMore = filtered.length > 3;
+  $('af-list').innerHTML = displayItems.map(fix => `
     <div class="stat-card" style="margin-bottom:.75rem; border-left:3px solid ${severityColor(fix.severity)}; ${!fix.active ? 'opacity:.5;' : ''}">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:.5rem;">
         <div style="display:flex; align-items:center; gap:.5rem;">
@@ -3484,7 +3881,7 @@ function renderAutoFixesList() {
         <div style="flex:1; min-width:200px;"><span style="color:var(--text3); font-weight:600;">Etter:</span> <span style="color:#4ade80;">${fix.new_behavior}</span></div>
       </div>` : ''}
     </div>
-  `).join('');
+  `).join('') + (hasMore && !showAll ? `<button class="btn btn-secondary" style="width:100%; margin-top:.75rem;" onclick="window._afShowAll=true;renderAutoFixesList()">Vis alle ${filtered.length} rettinger ▼</button>` : '') + (hasMore && showAll ? `<button class="btn btn-secondary" style="width:100%; margin-top:.75rem;" onclick="window._afShowAll=false;renderAutoFixesList()">Vis færre ▲</button>` : '');
 }
 
 async function toggleAutoFix(id, currentlyActive) {
@@ -3505,9 +3902,9 @@ function renderSettings() {
       <h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Om systemet</h3>
       <div style="display:flex; flex-direction:column; gap:.75rem; font-size:.875rem;">
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">System</span><span style="font-weight:500;">COE CRM</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">2.2.0</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">3.9.57</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Skildring</span><span style="font-weight:500;">AI-driven kundeoppfølgingssystem</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Backend</span><span style="font-weight:500;">Express + SQLite</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Backend</span><span style="font-weight:500;">Express + PostgreSQL</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Telefoni</span><span style="font-weight:500;">Twilio Voice AI</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Innlogga som</span><span style="font-weight:500;">${isAdmin ? '🔑 Administrator' : currentCompanyName}</span></div>
       </div>
