@@ -1048,7 +1048,7 @@ async function renderCompanyDetail(id) {
 
       <!-- Manual confirmation toggle -->
       <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:8px 0">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#000">
           <input type="checkbox" ${c.requires_worker_approval ? 'checked' : ''} 
             onchange="toggleManualConfirm(${c.id}, this.checked)"
             style="width:18px;height:18px">
