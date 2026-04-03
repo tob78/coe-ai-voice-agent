@@ -136,25 +136,31 @@
 
   /* ===== MOBILE RESPONSIVE ===== */
   @media (max-width: 768px) {
-    /* Login page — logos side-by-side on mobile, card centered */
-    .login-layout, .login-screen > div { 
+    /* Login page — card on top, logos side-by-side at bottom on mobile */
+    .login-screen { padding: .75rem !important; align-items: flex-start !important; padding-top: 2rem !important; }
+    .login-screen > div { 
       flex-direction: row !important; flex-wrap: wrap !important; 
-      gap: .5rem !important; padding: .5rem !important; 
-      justify-content: center !important; align-items: flex-end !important;
+      gap: .5rem !important; padding: 0 !important; 
+      justify-content: center !important; align-items: flex-start !important;
     }
+    .login-card { 
+      max-width: 100% !important; width: 100% !important; flex-basis: 100% !important;
+      flex: 0 0 auto !important; 
+      order: 1 !important; margin-top: 0 !important; padding: 1rem 1.25rem !important;
+    }
+    .login-card .gear-icon { font-size: 1.1rem !important; margin-bottom: 0 !important; }
+    .login-card h1 { font-size: 1.1rem !important; margin-top: .1rem !important; }
+    .login-mini-icons { margin: .1rem 0 !important; font-size: .6rem !important; }
+    .login-card p { font-size: .7rem !important; margin-top: .1rem !important; }
+    .login-card label { font-size: .8rem !important; }
+    .login-card input { padding: .6rem !important; font-size: .9rem !important; }
+    .login-card .btn { padding: .6rem !important; font-size: .9rem !important; }
     .login-logo-side { 
-      flex: 0 0 auto !important; max-height: 15vh !important; padding: 0 !important; 
-      width: 42% !important; max-width: 42vw !important;
+      flex: 0 0 auto !important; padding: .25rem !important; 
+      width: 44% !important; max-width: 44vw !important; 
+      order: 2 !important;
     }
-    .login-logo-side img { max-height: 14vh !important; width: 100% !important; max-width: none !important; object-fit: contain !important; }
-    .login-center, .login-card { 
-      max-width: 100% !important; width: 100% !important; flex: 0 0 auto !important; 
-      order: 3 !important; margin-top: .25rem !important;
-    }
-    .login-card .gear-icon { font-size: 1.5rem !important; }
-    .login-card h1 { font-size: 1.25rem !important; margin-top: .25rem !important; }
-    .login-mini-icons { margin: .25rem 0 !important; }
-    .login-card p { font-size: .75rem !important; margin-top: .125rem !important; }
+    .login-logo-side img { max-height: 25vh !important; width: 100% !important; max-width: none !important; object-fit: contain !important; }
     
 
     /* Dashboard: siste bestillinger first on mobile */
@@ -1016,12 +1022,12 @@ async function renderCompanyDetail(id) {
       <!-- Feature toggles — 3 grupper: INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
         <!-- INFO INN -->
-        <div style="position:relative;" id="info-in-wrap-${c.id}">
+        <div style="" id="info-in-wrap-${c.id}">
           <div style="display:flex; align-items:center; gap:.35rem;">
             <button onclick="toggleMasterFeature(${c.id},'feature_info_in',this,'info-in')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_in !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_in !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_in !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_in" data-on="${c.feature_info_in !== false}">📥 INFO INN ${c.feature_info_in !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleDropdown('info-in-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
           </div>
-          <div id="info-in-sub-${c.id}" style="display:none; position:absolute; top:100%; left:0; z-index:50; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem; min-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.5);">
+          <div id="info-in-sub-${c.id}" style="display:none; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem;">
             <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Innkommende kanaler</div>
             <button onclick="toggleFeature(${c.id},'feature_phone',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_phone !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_phone !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_phone !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_phone" data-on="${c.feature_phone !== false}">📞 Telefon ${c.feature_phone !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_chatbot',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_chatbot !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_chatbot !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_chatbot" data-on="${c.feature_chatbot !== false}">💬 Chatbot ${c.feature_chatbot !== false ? 'PÅ' : 'AV'}</button>
@@ -1029,12 +1035,12 @@ async function renderCompanyDetail(id) {
           </div>
         </div>
         <!-- INFO UT -->
-        <div style="position:relative;" id="info-out-wrap-${c.id}">
+        <div style="" id="info-out-wrap-${c.id}">
           <div style="display:flex; align-items:center; gap:.35rem;">
             <button onclick="toggleMasterFeature(${c.id},'feature_info_out',this,'info-out')" class="btn" style="flex:1; font-size:.95rem; padding:.65rem 1.2rem; border-radius:.5rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_info_out !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_info_out !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_info_out !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_info_out" data-on="${c.feature_info_out !== false}">📤 INFO UT ${c.feature_info_out !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleDropdown('info-out-sub-${c.id}')" style="font-size:.8rem; padding:.65rem .6rem; border-radius:.5rem; cursor:pointer; background:#334155; color:#94a3b8; border:1px solid #475569;" title="Vis detaljer">▼</button>
           </div>
-          <div id="info-out-sub-${c.id}" style="display:none; position:absolute; top:100%; left:0; z-index:50; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem; min-width:300px; box-shadow:0 4px 12px rgba(0,0,0,.5);">
+          <div id="info-out-sub-${c.id}" style="display:none; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem;">
             <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Utgående meldinger</div>
             <button onclick="toggleFeature(${c.id},'feature_employee_alert',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_employee_alert !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_employee_alert" data-on="${c.feature_employee_alert !== false}">📋 Ansattvarsling ${c.feature_employee_alert !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_auto_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_auto_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_auto_confirm" data-on="${c.feature_auto_confirm !== false}">📨 Auto-bekreftelse ${c.feature_auto_confirm !== false ? 'PÅ' : 'AV'}</button>
@@ -3795,7 +3801,7 @@ async function renderAutoFixes() {
         <option value="minor">🟢 Minor</option>
       </select>
       <label style="display:inline-flex; align-items:center; gap:.5rem; cursor:pointer; color:var(--text2); font-size:.85rem; background:var(--bg2); border:1px solid var(--border); border-radius:.5rem; padding:.4rem .75rem; white-space:nowrap;">
-        <input type="checkbox" id="af-active" checked onchange="renderAutoFixesList()" style="width:auto;"> ✅ Vis kun aktive
+        <input type="checkbox" id="af-active" checked onchange="renderAutoFixesList()" style="width:auto;"> Vis kun aktive
       </label>
     </div>
     <div id="af-stats" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:1.5rem;"></div>
@@ -3896,13 +3902,25 @@ async function toggleAutoFix(id, currentlyActive) {
 }
 
 function renderSettings() {
+  const adminPassBubble = isAdmin ? `
+    <div style="max-width:500px; margin-bottom:1.25rem; padding:1rem 1.25rem; background:linear-gradient(135deg,#1e3a5f,#1e293b); border:1px solid #3b82f6; border-radius:.75rem; box-shadow:0 2px 12px rgba(59,130,246,.15);">
+      <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem;">
+        <span style="font-size:1.1rem;">🔑</span>
+        <span style="font-weight:700; color:#60a5fa; font-size:.9rem;">Admin-passord</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:.75rem;">
+        <code id="admin-pw-display" style="flex:1; background:#0f172a; padding:.6rem .75rem; border-radius:.4rem; font-size:.95rem; color:#f1f5f9; letter-spacing:.5px; font-family:monospace; border:1px solid #334155;">••••••••••••••</code>
+        <button class="btn btn-secondary" onclick="const el=document.getElementById('admin-pw-display');const btn=this;if(el.textContent.includes('•')){el.textContent='Coe#Adm!n2024xQ';btn.textContent='🙈 Skjul';} else {el.textContent='••••••••••••••';btn.textContent='👁️ Vis';}" style="font-size:.8rem; padding:.5rem .75rem; white-space:nowrap;">👁️ Vis</button>
+      </div>
+    </div>` : '';
   app().innerHTML = `
     <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1.5rem;">Innstillinger</h2>
+    ${adminPassBubble}
     <div class="stat-card" style="max-width:500px;">
       <h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Om systemet</h3>
       <div style="display:flex; flex-direction:column; gap:.75rem; font-size:.875rem;">
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">System</span><span style="font-weight:500;">COE CRM</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">3.9.57</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">3.9.59</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Skildring</span><span style="font-weight:500;">AI-driven kundeoppfølgingssystem</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Backend</span><span style="font-weight:500;">Express + PostgreSQL</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Telefoni</span><span style="font-weight:500;">Twilio Voice AI</span></div>
