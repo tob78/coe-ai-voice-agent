@@ -814,11 +814,11 @@ app.post('/twilio/voice/respond', async (req, res) => {
           // SMS — uttrekk til ansatt + auto-bekreftelse til kunde
           await sendToMontour(customer, company);
 
-          // Auto-bekreftelse: "Vi kommer tilbake" til kunde — MOMENTANT etter samtale
-          if (company.feature_auto_confirm !== false && customer?.phone) {
+          // Auto-bekreftelse: "Vi kommer tilbake TIL DEG" til kunde — KUN når manuell bekreftelse PÅ
+          if (company.feature_auto_confirm !== false && company.requires_worker_approval === true && customer?.phone) {
             try {
               const { sendSms } = require('./sms-handler');
-              const autoMsg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Takk for samtalen med ${company.name}. Vi kommer tilbake til deg med bekreftelse. Ha en fin dag! 😊`;
+              const autoMsg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Takk for samtalen med ${company.name}. Vi kommer tilbake TIL DEG med bekreftelse. Ha en fin dag! 😊`;
               const smsRes = await sendSms(customer.phone, autoMsg);
               if (smsRes?.sid) {
                 await db.query(`INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, 'customer', $2, $3, 'auto_confirm', $4, 'sent', NOW())`, [customer.id, customer.phone, autoMsg, smsRes.sid]);
@@ -2890,15 +2890,27 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
               const timeText = extractedInfo.preferred_time ? ` kl ${extractedInfo.preferred_time}` : '';
               const svcText = extractedInfo.service_requested ? `\nTjeneste: ${extractedInfo.service_requested}` : '';
               const confirmMsg = `Hei${custName}! Din bestilling hos ${fullComp.name} er bekreftet! ✅\n📅 ${dateText}${timeText}${svcText}\nVi gleder oss til å se deg! 😊`;
-              const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-              const confirmSms = await twilio.messages.create({ body: confirmMsg, from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: callerPhone });
-              console.log(`✅ Auto-bekreftet booking + SMS sendt til ${callerPhone}: ${confirmSms.sid}`);
-              await db.query(`INSERT INTO messages (customer_id, company_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, $2, 'customer', $3, $4, 'booking_confirmation', $5, 'sent', NOW())`, [customerId, companyId, callerPhone, confirmMsg, confirmSms.sid]);
+              const { sendSms: confirmSmsFn } = require('./sms-handler');
+              const confirmSms = await confirmSmsFn(callerPhone, confirmMsg, fullComp.name, { customerId, companyId, recipientType: 'customer', messageType: 'booking_confirmation' });
+              if (confirmSms) console.log(`✅ Auto-bekreftet booking + SMS sendt til ${callerPhone}`);
             } catch (confirmErr) { console.error('Auto-confirm SMS feil:', confirmErr.message); }
+          }
+          // Auto-bekreftelse: "Vi kommer tilbake TIL DEG" — KUN når manuell bekreftelse er PÅ
+          if (companyResult.rows[0]?.requires_worker_approval === true && callerPhone !== 'ukjent') {
+            try {
+              const fullComp2 = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
+              if (fullComp2?.feature_auto_confirm !== false) {
+                const custName2 = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
+                const autoMsg = `Hei${custName2}! Takk for samtalen med ${fullComp2.name}. Vi kommer tilbake TIL DEG med bekreftelse. Ha en fin dag! 😊`;
+                const { sendSms: autoSmsFn } = require('./sms-handler');
+                const autoRes = await autoSmsFn(callerPhone, autoMsg, fullComp2.name, { customerId, companyId, recipientType: 'customer', messageType: 'auto_confirm' });
+                if (autoRes) console.log(`📨 Recovery: Auto-bekreftelse sendt til ${callerPhone}`);
+              }
+            } catch (autoSmsErr) { console.error('Recovery auto-bekreftelse SMS feil:', autoSmsErr.message); }
           }
           }
           
-          // Send SMS til ansatt (kun for nye samtaler)
+          // Send SMS til ansatt (kun for nye samtaler) — via sms-handler for logging + Sveve fallback
           const company = companyResult.rows[0];
           if (company && transcriptText) {
             try {
@@ -2919,31 +2931,11 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 if (extractedInfo.meny_onsker) parts.push(`Meny: ${extractedInfo.meny_onsker}`);
                 if (extractedInfo.lokale) parts.push(`Lokale: ${extractedInfo.lokale}`);
                 if (extractedInfo.comment) parts.push(`Kommentar: ${extractedInfo.comment}`);
-                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-                const smsMsg = await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
-                console.log(`✅ Recovery SMS sendt til ${targetPhone}: ${smsMsg.sid}`);
-                try {
-                  await db.query(`INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', $4, 'sent', NOW())`, [customerId, targetPhone, parts.join('\n'), smsMsg.sid]);
-                } catch(logErr) { console.error('SMS logging feil:', logErr.message); }
+                const { sendSms: workerSmsFn } = require('./sms-handler');
+                const smsMsg = await workerSmsFn(targetPhone, parts.join('\n'), fullCompany.name, { customerId, companyId, recipientType: 'worker', messageType: 'uttrekk_employee' });
+                if (smsMsg) console.log(`✅ Recovery SMS sendt til ${targetPhone}`);
               }
             } catch (smsErr) { console.error('Recovery SMS feil:', smsErr.message); }
-          }
-          
-          // 📨 Auto-bekreftelse SMS til kunde — MOMENTANT etter samtale
-          if (customerId && callerPhone !== 'ukjent') {
-            try {
-              const fullComp = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
-              if (fullComp?.feature_auto_confirm !== false && fullComp?.requires_worker_approval !== false) {
-                const custName = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
-                const autoMsg = `Hei${custName}! Takk for samtalen med ${fullComp.name}. Vi kommer tilbake til deg med bekreftelse. Ha en fin dag! 😊`;
-                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-                const custSms = await twilio.messages.create({ body: autoMsg, from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: callerPhone });
-                console.log(`📨 Recovery: Auto-bekreftelse sendt til ${callerPhone}: ${custSms.sid}`);
-                try {
-                  await db.query(`INSERT INTO messages (customer_id, company_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, $2, 'customer', $3, $4, 'auto_confirm', $5, 'sent', NOW())`, [customerId, companyId, callerPhone, autoMsg, custSms.sid]);
-                } catch(logErr) { console.error('Auto-bekreftelse logging feil:', logErr.message); }
-              }
-            } catch (autoSmsErr) { console.error('Recovery auto-bekreftelse SMS feil:', autoSmsErr.message); }
           }
           
           console.log(`🔄 Vapi recovery: Lagret ${vc.id} for ${companyResult.rows[0].name} — ${customerName} (${outcome}, ${duration}s)`);
@@ -3073,15 +3065,9 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 if (extractedInfo.address) parts.push(`Adresse: ${extractedInfo.address}${extractedInfo.postal_code ? ' ' + extractedInfo.postal_code : ''}`);
                 if (extractedInfo.preferred_date) parts.push(`Dato: ${extractedInfo.preferred_date}`);
                 try {
-                  const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-                  const smsMsg = await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
-                  // Log SMS to messages table to prevent catch-up re-sending
-                  await db.query(
-                    `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at)
-                     VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', $4, 'sent', NOW())`,
-                    [call.customer_id, targetPhone, parts.join('\n'), smsMsg.sid]
-                  ).catch(() => {});
-                  console.log(`✅ Self-healing SMS sendt for call ${call.id}`);
+                  const { sendSms: healSmsFn } = require('./sms-handler');
+                  const smsMsg = await healSmsFn(targetPhone, parts.join('\n'), company2.name, { customerId: call.customer_id, companyId: call.company_id, recipientType: 'worker', messageType: 'uttrekk_employee' });
+                  if (smsMsg) console.log(`✅ Self-healing SMS sendt for call ${call.id}`);
                 } catch(smsErr) { console.error('Self-healing SMS feil:', smsErr.message); }
               }
               
@@ -3108,7 +3094,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
     // 📱 SMS CATCH-UP: Sender uttrekk-SMS for samtaler som aldri fikk det
     async function smsCatchUp() {
       try {
-        // Finn samtaler med transcript som ALDRI fikk uttrekk-SMS
+        // Finn samtaler fra SISTE 24 TIMER med transcript som ALDRI fikk uttrekk-SMS
         const missedCalls = await db.all(`
           SELECT c.id as call_id, c.customer_id, c.transcript, c.extracted_info, c.company_id,
                  cu.name, cu.phone,
@@ -3117,12 +3103,16 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
           JOIN customers cu ON c.customer_id = cu.id
           JOIN companies co ON c.company_id = co.id
           WHERE c.transcript IS NOT NULL AND LENGTH(c.transcript) > 50
+          AND c.created_at > NOW() - INTERVAL '24 hours'
           AND co.sms_extract_employee != false
           AND (co.montour_phone IS NOT NULL OR co.boss_phone IS NOT NULL)
-          AND cu.id NOT IN (
-            SELECT DISTINCT m.customer_id FROM messages m WHERE m.message_type = 'uttrekk_employee' AND m.status IN ('sent', 'failed')
+          AND c.id NOT IN (
+            SELECT DISTINCT m.call_id FROM messages m WHERE m.message_type = 'uttrekk_employee' AND m.call_id IS NOT NULL
           )
-          ORDER BY c.id DESC LIMIT 5
+          AND cu.id NOT IN (
+            SELECT DISTINCT m.customer_id FROM messages m WHERE m.message_type = 'uttrekk_employee' AND m.status IN ('sent', 'failed') AND m.created_at > NOW() - INTERVAL '24 hours'
+          )
+          ORDER BY c.id DESC LIMIT 3
         `);
         
         if (missedCalls.length === 0) return;
@@ -3149,29 +3139,16 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             if (info.meny_onsker) parts.push(`Meny: ${info.meny_onsker}`);
             if (info.comment) parts.push(`Kommentar: ${info.comment}`);
             
-            const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-            const smsMsg = await twilio.messages.create({
-              body: parts.join('\n'),
-              from: process.env.TWILIO_PHONE_NUMBER || '+12602612731',
-              to: targetPhone
-            });
-            trackSMSSent();
-            console.log(`✅ SMS catch-up sendt for call ${call.call_id}: ${smsMsg.sid}`);
-            
-            // Log SMS
-            await db.query(
-              `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at)
-               VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', $4, 'sent', NOW())`,
-              [call.customer_id, targetPhone, parts.join('\n'), smsMsg.sid]
-            );
+            const { sendSms: catchupSmsFn } = require('./sms-handler');
+            const smsMsg = await catchupSmsFn(targetPhone, parts.join('\n'), call.company_name, { customerId: call.customer_id, companyId: call.company_id, recipientType: 'worker', messageType: 'uttrekk_employee' });
+            if (smsMsg) {
+              trackSMSSent();
+              console.log(`✅ SMS catch-up sendt for call ${call.call_id}`);
+            } else {
+              console.log(`⚠️ SMS catch-up feilet for call ${call.call_id} — logget av sms-handler`);
+            }
           } catch (smsErr) {
             console.error(`⚠️ SMS catch-up feil for call ${call.call_id}:`, smsErr.message);
-            // Logg feil slik at vi ikke prøver igjen
-            await db.query(
-              `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, status, created_at)
-               VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', 'failed', NOW())`,
-              [call.customer_id, call.montour_phone || 'unknown', `FEIL: ${smsErr.message}`]
-            ).catch(() => {});
           }
         }
       } catch (err) {
