@@ -1,6 +1,8 @@
 // ===== SMS HANDLER =====
 // Handles SMS sending to montør and customer, plus reminders
 
+const { db, pool } = require('./db');
+
 // Use Restricted API Key if available, fallback to Account SID + Auth Token
 const twilioClient = process.env.TWILIO_API_KEY_SID
   ? require('twilio')(process.env.TWILIO_API_KEY_SID, process.env.TWILIO_API_KEY_SECRET, { accountSid: process.env.TWILIO_ACCOUNT_SID })
@@ -586,7 +588,7 @@ async function checkAndSendReminders(db) {
 }
 
 // ===== HANDLE INCOMING SMS =====
-async function handleIncomingSms(from, body, db) {
+async function handleIncomingSms(from, body) {
   console.log(`📨 Incoming SMS from ${from}: ${body}`);
   
   // Check if it's from a montør
@@ -595,45 +597,104 @@ async function handleIncomingSms(from, body, db) {
     from
   );
   
-  if (!company) {
-    console.log('📨 SMS from unknown number:', from);
-    return;
+  if (company) {
+    // Montør response flow
+    const trimmed = body.trim();
+    
+    // Get latest booked customer for this company
+    const customer = await db.get(
+      "SELECT * FROM customers WHERE company_id = $1 AND status = 'Booket' ORDER BY created_at DESC LIMIT 1",
+      company.id
+    );
+
+    if (!customer) {
+      console.log('📨 No booked customer found for company', company.name);
+      return { handled: false };
+    }
+
+    // 1 = Accept job
+    if (trimmed === '1') {
+      console.log(`✅ Montør accepted job for ${customer.name}`);
+      await sendSms(from, `👍 Du har tatt oppdraget for ${customer.name}. Lykke til!`);
+      return { handled: true, action: 'accepted' };
+    }
+    // 2 + price = Set price
+    else if (trimmed.startsWith('2')) {
+      const priceMatch = trimmed.match(/2\s+(\d+)/);
+      if (priceMatch) {
+        const price = parseInt(priceMatch[1]);
+        await db.run('UPDATE customers SET price = $1 WHERE id = $2', price, customer.id);
+        console.log(`💰 Price set: ${price} for ${customer.name}`);
+        await sendSms(from, `💰 Pris ${price} kr registrert for ${customer.name}.`);
+        return { handled: true, action: 'price_set', price };
+      }
+    }
+    // 3 = Completed
+    else if (trimmed === '3') {
+      await db.run("UPDATE customers SET status = 'Fullført' WHERE id = $1", customer.id);
+      console.log(`✅ Job completed for ${customer.name}`);
+      await sendSms(from, `✅ Oppdrag for ${customer.name} er registrert som fullført!`);
+      return { handled: true, action: 'completed' };
+    }
+    
+    return { handled: false };
   }
 
-  const trimmed = body.trim();
-  
-  // Get latest booked customer for this company
-  const customer = await db.get(
-    "SELECT * FROM customers WHERE company_id = $1 AND status = 'Booket' ORDER BY created_at DESC LIMIT 1",
-    company.id
+  // ===== If not a montør — this is a new lead via SMS =====
+  let existingCustomer = null;
+  try {
+    const custResult = await pool.query('SELECT * FROM customers WHERE phone = $1 ORDER BY created_at DESC LIMIT 1', [from]);
+    existingCustomer = custResult.rows[0];
+  } catch(e) {}
+
+  if (existingCustomer) {
+    // Add as a new booking to existing customer
+    console.log(`📨 SMS from existing customer ${existingCustomer.name}: ${body}`);
+    await pool.query(
+      `INSERT INTO bookings (company_id, customer_id, service_request, source, notes, created_at) 
+       VALUES ($1, $2, $3, 'SMS', $4, NOW())`,
+      [existingCustomer.company_id, existingCustomer.id, body, `Innkommende SMS: ${body}`]
+    );
+    return { handled: true, action: 'existing_customer_sms', customerId: existingCustomer.id };
+  }
+
+  // Brand new unknown sender — create customer
+  // Find default company (the one with the Twilio phone number)
+  let defaultCompany = null;
+  try {
+    const compResult = await pool.query("SELECT * FROM companies WHERE phone IS NOT NULL ORDER BY id ASC LIMIT 1");
+    defaultCompany = compResult.rows[0];
+  } catch(e) {}
+
+  const companyId = defaultCompany ? defaultCompany.id : null;
+  const custInsert = await pool.query(
+    `INSERT INTO customers (company_id, name, phone, service_requested, source, status, created_at) 
+     VALUES ($1, $2, $3, $4, 'SMS', 'Ny', NOW()) RETURNING id`,
+    [companyId, `SMS-innringer (${from})`, from, body]
+  );
+  const newCustId = custInsert.rows[0].id;
+
+  // Create booking
+  await pool.query(
+    `INSERT INTO bookings (company_id, customer_id, service_request, source, notes, created_at) 
+     VALUES ($1, $2, $3, 'SMS', $4, NOW())`,
+    [companyId, newCustId, body, `Innkommende SMS: ${body}`]
   );
 
-  if (!customer) {
-    console.log('📨 No booked customer found for company', company.name);
-    return;
+  // Log the SMS in messages table
+  await pool.query(
+    `INSERT INTO messages (call_id, company_id, direction, content, phone_to, provider, sent_at) 
+     VALUES (NULL, $1, 'inbound', $2, $3, 'twilio', NOW())`,
+    [companyId, body, from]
+  );
+
+  // Notify boss/montør if company has one
+  if (defaultCompany && defaultCompany.montour_phone) {
+    await sendSms(defaultCompany.montour_phone, `📨 NY SMS-HENVENDELSE\nFra: ${from}\nMelding: ${body}\n\nKunde opprettet i CRM.`);
   }
 
-  // 1 = Accept job
-  if (trimmed === '1') {
-    console.log(`✅ Montør accepted job for ${customer.name}`);
-    await sendSms(from, `👍 Du har tatt oppdraget for ${customer.name}. Lykke til!`);
-  }
-  // 2 + price = Set price
-  else if (trimmed.startsWith('2')) {
-    const priceMatch = trimmed.match(/2\s+(\d+)/);
-    if (priceMatch) {
-      const price = parseInt(priceMatch[1]);
-      await db.run('UPDATE customers SET price = $1 WHERE id = $2', price, customer.id);
-      console.log(`💰 Price set: ${price} for ${customer.name}`);
-      await sendSms(from, `💰 Pris ${price} kr registrert for ${customer.name}.`);
-    }
-  }
-  // 3 = Completed
-  else if (trimmed === '3') {
-    await db.run("UPDATE customers SET status = 'Fullført' WHERE id = $1", customer.id);
-    console.log(`✅ Job completed for ${customer.name}`);
-    await sendSms(from, `✅ Oppdrag for ${customer.name} er registrert som fullført!`);
-  }
+  console.log(`📨 New SMS lead created: customer #${newCustId} from ${from}`);
+  return { handled: true, action: 'new_sms_lead', customerId: newCustId };
 }
 
 // ===== SEND EXTRACTION SMS (AI-UTTREKK FRA SAMTALE) =====

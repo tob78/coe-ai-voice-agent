@@ -221,6 +221,19 @@ async function initDatabase() {
     // Messages table — SMS logging improvements
     'ALTER TABLE messages ADD COLUMN IF NOT EXISTS company_id INTEGER',
     'ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT \'twilio\'',
+    // v3.9.53 — Feature toggles per company
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_phone BOOLEAN DEFAULT true',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_chatbot BOOLEAN DEFAULT true',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_calendar BOOLEAN DEFAULT true',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_messages BOOLEAN DEFAULT true',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_base44 BOOLEAN DEFAULT true',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS feature_inbound_sms BOOLEAN DEFAULT false',
+    // v3.9.53 — Messages table: direction + phone_to for inbound SMS tracking
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS direction TEXT DEFAULT \'outbound\'',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS content TEXT',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS phone_to TEXT',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS call_id INTEGER',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP',
   ];
   for (const sql of migrations) {
     try { await pool.query(sql); } catch(e) { /* column may already exist */ }

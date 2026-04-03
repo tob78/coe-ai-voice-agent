@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.50 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.53 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -493,7 +493,7 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: dbCheck ? 'ok' : 'error',
       timestamp: new Date().toISOString(), 
-      version: '3.9.52',
+      version: '3.9.53',
       uptime: Math.round(process.uptime()),
       dbLatency,
       env: {
@@ -508,7 +508,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ 
       status: 'error', 
       timestamp: new Date().toISOString(),
-      version: '3.9.50',
+      version: '3.9.53',
       error: err.message 
     });
   }
@@ -1037,18 +1037,20 @@ app.post('/twilio/sms', async (req, res) => {
       // Handle other montør SMS responses
       const result = await handleIncomingSms(from, body);
       
-      if (result.handled) {
+      if (result && result.handled) {
         if (result.action === 'accepted') {
           twiml.message('✅ Registrert! Oppdraget er godtatt.');
         } else if (result.action === 'price_set') {
           twiml.message(`✅ Pris ${result.price} kr registrert.`);
         } else if (result.action === 'completed') {
           twiml.message('✅ Oppdraget er registrert som fullført!');
+        } else if (result.action === 'new_sms_lead' || result.action === 'existing_customer_sms') {
+          twiml.message('Takk for meldingen! Den er registrert og vi tar kontakt. 😊');
         } else {
           twiml.message('✅ Kommentaren din er lagret.');
         }
       } else {
-        twiml.message('⚠️ Kunne ikke koble meldingen til et oppdrag.');
+        twiml.message('Takk for meldingen! Den er registrert og vi tar kontakt. 😊');
       }
     }
   }
@@ -3539,6 +3541,11 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
       const company = await db.get('SELECT * FROM companies WHERE id = $1', companyId);
       if (!company) return res.status(404).json({ error: 'Selskap ikke funnet' });
 
+      // Check if phone feature is enabled for this company (v3.9.53)
+      if (company.feature_phone === false) {
+        return res.status(403).json({ error: 'Telefon AI er deaktivert for dette selskapet. Aktiver modulen i innstillinger.' });
+      }
+
       const VAPI_KEY = process.env.VAPI_PRIVATE_KEY;
       if (!VAPI_KEY) return res.status(500).json({ error: 'VAPI_PRIVATE_KEY ikke satt i miljøvariabler' });
 
@@ -4107,6 +4114,11 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
       const company = await db.get('SELECT * FROM companies WHERE id = $1', companyId);
       if (!company || !company.vapi_assistant_id) return res.status(404).json({ error: 'Selskap ikke funnet eller mangler Vapi-assistent' });
 
+      // Check if phone feature is enabled for this company (v3.9.53)
+      if (company.feature_phone === false) {
+        return res.status(403).json({ error: 'Telefon AI er deaktivert for dette selskapet. Aktiver modulen i innstillinger.' });
+      }
+
       const VAPI_KEY = process.env.VAPI_PRIVATE_KEY;
       const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
       const switchRes = await fetch('https://api.vapi.ai/phone-number/' + vapi_phone_id, {
@@ -4117,6 +4129,72 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
       const result = await switchRes.json();
       res.json({ ok: true, phone: result.number, assistantId: company.vapi_assistant_id });
     } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ===== Capacity Calculation Endpoint (v3.9.53) =====
+  app.get('/api/capacity', async (req, res) => {
+    try {
+      const companyCount = await db.get('SELECT COUNT(*) as count FROM companies');
+      const totalCalls = await db.get('SELECT COUNT(*) as count FROM calls');
+      const totalBookings = await db.get('SELECT COUNT(*) as count FROM bookings');
+      const totalSms = await db.get("SELECT COUNT(*) as count FROM messages WHERE direction = $1", 'outbound');
+      const totalCustomers = await db.get('SELECT COUNT(*) as count FROM customers');
+      
+      const callsToday = await db.get("SELECT COUNT(*) as count FROM calls WHERE created_at >= CURRENT_DATE");
+      const smsToday = await db.get("SELECT COUNT(*) as count FROM messages WHERE sent_at >= CURRENT_DATE");
+      
+      const avgDuration = await db.get("SELECT COALESCE(AVG(call_duration), 0) as avg_dur FROM calls WHERE call_duration > 0");
+      
+      const avgCallDurationMin = ((avgDuration && avgDuration.avg_dur) || 180) / 60;
+      const costPerCall = {
+        vapi: avgCallDurationMin * 0.05,
+        openai_realtime: avgCallDurationMin * 0.06,
+        twilio: avgCallDurationMin * 0.02,
+        total_call: 0,
+        sms_sveve: 0.39,
+        sms_twilio: 0.85,
+      };
+      costPerCall.total_call = costPerCall.vapi + costPerCall.openai_realtime + costPerCall.twilio;
+      const costPerCallNOK = costPerCall.total_call * 10.5;
+      const costPerSmsNOK = 0.39;
+      const totalCostPerBooking = costPerCallNOK + (costPerSmsNOK * 3);
+      
+      const capacity = {
+        current: {
+          companies: parseInt(companyCount?.count || 0),
+          total_calls: parseInt(totalCalls?.count || 0),
+          total_bookings: parseInt(totalBookings?.count || 0),
+          total_sms: parseInt(totalSms?.count || 0),
+          total_customers: parseInt(totalCustomers?.count || 0),
+          calls_today: parseInt(callsToday?.count || 0),
+          sms_today: parseInt(smsToday?.count || 0),
+          avg_call_duration_sec: Math.round((avgDuration && avgDuration.avg_dur) || 0),
+        },
+        costs: {
+          per_call_usd: Math.round(costPerCall.total_call * 100) / 100,
+          per_call_nok: Math.round(costPerCallNOK * 100) / 100,
+          per_sms_nok: costPerSmsNOK,
+          per_booking_total_nok: Math.round(totalCostPerBooking * 100) / 100,
+          monthly_fixed_nok: 63,
+        },
+        limits: {
+          sms_per_day: 50,
+          sms_per_month: 1500,
+          concurrent_calls: 1,
+          calls_per_day_estimate: 200,
+          openai_monthly_budget_usd: 50,
+          google_maps_free_calls: 10000,
+        },
+        scaling: {
+          note: 'Norske Twilio-numre (~$3/mnd/stk) anbefalt ved 10+ selskaper. SIP-trunk ved 50+.',
+          breakeven_per_company_nok: Math.round(totalCostPerBooking * 30),
+        }
+      };
+      
+      res.json(capacity);
+    } catch(err) {
       res.status(500).json({ error: err.message });
     }
   });

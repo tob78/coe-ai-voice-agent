@@ -1876,6 +1876,45 @@ async function openEditCompanyModal(id) {
           </label>
           <p style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">Hvis på: ansatt mottar SMS og må bekrefte før kunden får bekreftelse</p>
         </div>
+        <h4 style="font-weight:600; font-size:.875rem; color:var(--text2); margin-top:.5rem;">Moduler</h4>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:.5rem;">
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-phone" ${c.feature_phone !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">📞 Telefon AI</span>
+            </label>
+          </div>
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-chatbot" ${c.feature_chatbot !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">💬 Chatbot</span>
+            </label>
+          </div>
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-calendar" ${c.feature_calendar !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">📅 Kalender</span>
+            </label>
+          </div>
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-messages" ${c.feature_messages !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">✉️ Meldinger</span>
+            </label>
+          </div>
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-base44" ${c.feature_base44 !== false ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">🌐 Base44</span>
+            </label>
+          </div>
+          <div style="padding:.5rem .75rem; background:#1e293b; border:1px solid #334155; border-radius:.5rem;">
+            <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+              <input type="checkbox" id="ec-feat-inbound-sms" ${c.feature_inbound_sms === true ? 'checked' : ''} style="width:1rem; height:1rem;">
+              <span style="font-size:.8rem; color:var(--text2);">📥 Inbound SMS</span>
+            </label>
+          </div>
+        </div>
         <div style="display:flex; gap:.75rem;">
           <button class="btn btn-primary" style="flex:1;" onclick="updateCompany(${c.id})">Lagre</button>
           <button class="btn btn-danger" onclick="deleteCompany(${c.id})">Slett</button>
@@ -2138,7 +2177,13 @@ async function updateCompany(id) {
     sms_confirm_customer: $('ec-sms-customer')?.checked ?? true,
     sms_remind_customer: $('ec-sms-reminder')?.checked ?? true,
     sms_extract_employee: $('ec-sms-extract')?.checked ?? true,
-    requires_worker_approval: $('ec-requires-approval')?.checked || false
+    requires_worker_approval: $('ec-requires-approval')?.checked || false,
+    feature_phone: $('ec-feat-phone')?.checked ?? true,
+    feature_chatbot: $('ec-feat-chatbot')?.checked ?? true,
+    feature_calendar: $('ec-feat-calendar')?.checked ?? true,
+    feature_messages: $('ec-feat-messages')?.checked ?? true,
+    feature_base44: $('ec-feat-base44')?.checked ?? true,
+    feature_inbound_sms: $('ec-feat-inbound-sms')?.checked || false,
   };
   // Include logo if changed
   if (editLogoData !== undefined) {
