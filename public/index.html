@@ -1040,10 +1040,10 @@ async function renderCompanyDetail(id) {
         </div>
       </div>
 
-      ${(c.boss_phone || c.boss_email) ? \`<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; font-size:.875rem;">
+      ${(c.boss_phone || c.boss_email) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; font-size:.875rem;">
         <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens telefon:</span> <strong>${fmtPhone(c.boss_phone)}</strong></div>
         <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
-      </div>\` : ''}
+      </div>` : ''}
 
       <!-- Feature toggles — INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
