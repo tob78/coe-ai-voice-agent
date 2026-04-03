@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.53 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.54 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -493,7 +493,7 @@ app.get('/health', async (req, res) => {
     res.json({ 
       status: dbCheck ? 'ok' : 'error',
       timestamp: new Date().toISOString(), 
-      version: '3.9.53',
+      version: '3.9.54',
       uptime: Math.round(process.uptime()),
       dbLatency,
       env: {
@@ -508,7 +508,7 @@ app.get('/health', async (req, res) => {
     res.status(503).json({ 
       status: 'error', 
       timestamp: new Date().toISOString(),
-      version: '3.9.53',
+      version: '3.9.54',
       error: err.message 
     });
   }
@@ -2321,7 +2321,7 @@ app.get('/api/test-openai', async (req, res) => {
 // ===============================================================
 // 7. AUTH API - Login for CRM
 // ===============================================================
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'coeadmin2024';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Coe#Adm!n2024xQ';
 
 app.post('/api/auth/login', async (req, res) => {
   const { password } = req.body;
@@ -2843,6 +2843,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
              OR
              (c.transcript IS NOT NULL AND LENGTH(c.transcript) > 50 AND c.customer_id IN (SELECT id FROM customers WHERE name IN ('Ny innringer','User','user','Ukjent','unknown')))
            )
+           AND c.self_healed_at IS NULL
            ORDER BY c.id DESC LIMIT 10`
         );
         if (brokenCalls.rows.length === 0) return;
@@ -2948,11 +2949,19 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 if (extractedInfo.preferred_date) parts.push(`Dato: ${extractedInfo.preferred_date}`);
                 try {
                   const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
-                  await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
+                  const smsMsg = await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
+                  // Log SMS to messages table to prevent catch-up re-sending
+                  await db.query(
+                    `INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at)
+                     VALUES ($1, 'worker', $2, $3, 'uttrekk_employee', $4, 'sent', NOW())`,
+                    [call.customer_id, targetPhone, parts.join('\n'), smsMsg.sid]
+                  ).catch(() => {});
                   console.log(`✅ Self-healing SMS sendt for call ${call.id}`);
                 } catch(smsErr) { console.error('Self-healing SMS feil:', smsErr.message); }
               }
               
+              // Mark as self-healed to prevent re-processing
+              await db.query('UPDATE calls SET self_healed_at = NOW() WHERE id = $1', [call.id]);
               console.log(`🔧 Self-healing: Call ${call.id} re-ekstrahert → ${extractedInfo.name || '?'}`);
             }
           } catch(callErr) { console.error(`Self-healing feil for call ${call.id}:`, callErr.message); }

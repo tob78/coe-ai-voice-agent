@@ -115,6 +115,7 @@
     overflow: visible;
     display: inline-block;
     vertical-align: middle;
+    margin-left: 1rem;
   }
   /* Clickable stat cards */
   .stat-card-btn { cursor: pointer; transition: all .15s; }
@@ -135,6 +136,7 @@
     /* Login page */
     .login-layout { flex-direction: column !important; gap: 1rem !important; padding: 1rem !important; }
     .login-left, .login-right { display: none !important; }
+    .login-logo-side { display: none !important; }
     .login-center { max-width: 100% !important; width: 100% !important; }
     
     /* Sidebar */
@@ -267,7 +269,11 @@
 
 <!-- Login Screen -->
 <div id="login-screen" class="login-screen">
-  <div class="login-card">
+  <div style="display:flex; align-items:center; justify-content:center; gap:2rem; max-width:900px; width:100%;">
+    <div class="login-logo-side" style="flex:0 0 200px; text-align:center;">
+      <img src="/crm/ga-postit-logo.png" alt="GA Post-it" style="width:180px; height:auto; object-fit:contain; filter:drop-shadow(0 4px 12px rgba(0,0,0,.4)); cursor:pointer;" onclick="window.open(this.src)">
+    </div>
+  <div class="login-card" style="flex:1; max-width:360px;">
     <div style="text-align:center; margin-bottom:1.5rem;">
       <div class="gear-icon">⚙️</div>
       <h1 style="font-size:1.75rem; font-weight:800; color:var(--text); line-height:1.3; margin-top:.5rem;">COE CRM</h1>
@@ -284,12 +290,12 @@
       <div id="login-error" style="color:#f87171; font-size:.875rem; display:none;"></div>
       <button class="btn btn-primary" style="width:100%; padding:.75rem; font-size:1rem;" onclick="doLogin()">Logg inn</button>
       <div style="text-align:center; margin-top:1.5rem;">
-        <div style="display:flex; align-items:center; justify-content:center; gap:1rem;">
-          <img src="/crm/ga-logo.png" alt="Gudbrandsdal Automatisering" style="width:160px; height:160px; object-fit:contain; border-radius:12px; box-shadow:0 4px 20px rgba(0,0,0,.2);">
-          <img src="/crm/ga-postit.png" alt="Info" style="width:120px; height:auto; object-fit:contain; filter:drop-shadow(0 2px 8px rgba(0,0,0,.3));">
-        </div>
-        <p style="color:var(--text3); font-size:.8rem; margin-top:.5rem;">I samarbeid med Gudbrandsdal Automatisering</p>
+        <p style="color:var(--text3); font-size:.8rem;">I samarbeid med Gudbrandsdal Automatisering</p>
       </div>
+    </div>
+  </div>
+    <div class="login-logo-side" style="flex:0 0 200px; text-align:center;">
+      <img src="/crm/ga-logo.png" alt="Gudbrandsdal Automatisering" style="width:180px; height:180px; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
     </div>
   </div>
 </div>
@@ -302,8 +308,8 @@
     <p style="color:var(--text3); font-size:.75rem; margin-top:.25rem;" id="sidebar-subtitle">Kundeoppfølging</p>
     <div style="margin-top:.75rem; padding-top:.75rem; border-top:1px solid var(--border);">
       <div style="display:flex; align-items:center; justify-content:center; gap:.5rem;">
-        <img src="/crm/ga-logo.png" alt="GA" style="width:64px; height:64px; object-fit:contain; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.15);">
-        <img src="/crm/ga-postit.png" alt="Info" style="width:48px; height:auto; object-fit:contain; filter:drop-shadow(0 1px 4px rgba(0,0,0,.3));">
+        <img src="/crm/ga-logo.png" alt="GA" style="width:64px; height:64px; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
+        <img src="/crm/ga-postit-logo.png" alt="GA" style="width:48px; height:auto; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
       </div>
       <p style="color:var(--text3); font-size:.65rem; margin-top:.25rem; line-height:1.3;">I samarbeid med<br>Gudbrandsdal Automatisering</p>
     </div>
@@ -318,13 +324,13 @@
   </nav>
   <!-- Sidebar confirmed appointments -->
   <div id="sidebar-confirmed" style="margin-top:.75rem; padding:0 .75rem; border-top:1px solid var(--border); padding-top:.75rem;">
-    <div style="font-size:.7rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem; padding-left:.5rem;">✅ Bekreftede timer</div>
+    <div style="font-size:.7rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem; padding-left:.5rem;">✅ Bekreftede timer <span id="sidebar-conf-count" style="color:var(--green);"></span></div>
     <div id="sidebar-conf-list"></div>
   </div>
   <!-- Company list removed from sidebar — use Selskaper page instead -->
   <div style="position:absolute; bottom:0; left:0; right:0; padding:1rem; border-top:1px solid var(--border);">
     <div style="color:var(--text3); font-size:.75rem; margin-bottom:.5rem; text-align:center;" id="sidebar-user"></div>
-    <button class="btn" style="width:100%; color:var(--text2); background:transparent; font-size:.875rem; margin-bottom:.5rem;" onclick="location.reload()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🔄 Oppdater</button>
+
     <button class="btn" style="width:100%; color:var(--text2); background:transparent; font-size:.875rem;" onclick="doLogout()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🚪 Logg ut</button>
   </div>
 </aside>
@@ -900,7 +906,7 @@ async function renderCompanyDetail(id) {
       <div class="${industryThemeClass}" style="border-radius:.75rem; padding:1.5rem 1.75rem; margin-top:.75rem; margin-bottom:1.5rem; background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border:1px solid var(--border); box-shadow:0 4px 20px rgba(0,0,0,.3);">
         <div style="display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:1rem;">
         <div style="display:flex; align-items:center; gap:1.25rem; min-width:0; flex:1;">
-          ${c.logo_url ? `<img src="${c.logo_url}" alt="Logo" style="width:240px; height:240px; border-radius:1rem; object-fit:contain; background:#0f172a; border:2px solid #475569; padding:12px; flex-shrink:0;">` : `<div style="width:240px; height:240px; border-radius:1rem; background:#0f172a; border:2px dashed #475569; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span style="font-size:5rem;">${industryIcon}</span></div>`}
+          ${c.logo_url ? `<img src="${c.logo_url}" alt="Logo" style="width:240px; height:240px; border-radius:1rem; object-fit:contain; background:#0f172a; border:2px solid #475569; padding:12px; flex-shrink:0; cursor:pointer;" onclick="window.open(this.src)">` : `<div style="width:240px; height:240px; border-radius:1rem; background:#0f172a; border:2px dashed #475569; display:flex; align-items:center; justify-content:center; flex-shrink:0;"><span style="font-size:5rem;">${industryIcon}</span></div>`}
           <div style="min-width:0;">
             <h2 style="font-size:1.75rem; font-weight:800; color:#f1f5f9; letter-spacing:-.02em; word-wrap:break-word; overflow-wrap:break-word;">${c.name}</h2>
             <div style="display:flex; align-items:center; gap:.5rem; margin-top:.35rem;">
@@ -915,10 +921,20 @@ async function renderCompanyDetail(id) {
         </div>
         </div>
         <div style="display:flex; align-items:center; justify-content:flex-end; gap:.75rem; margin-top:.75rem; padding-top:.75rem; border-top:1px solid #334155;">
-          <img src="/crm/ga-logo.png" alt="GA" style="width:40px; height:40px; object-fit:contain; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.15);">
-          <img src="/crm/ga-postit.png" alt="Info" style="width:32px; height:auto; object-fit:contain; filter:drop-shadow(0 1px 3px rgba(0,0,0,.2));">
+          <img src="/crm/ga-logo.png" alt="GA" style="width:40px; height:40px; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
+          <img src="/crm/ga-postit-logo.png" alt="GA" style="width:32px; height:auto; object-fit:contain; cursor:pointer;" onclick="window.open(this.src)">
           <span style="font-size:.7rem; color:#64748b;">I samarbeid med Gudbrandsdal Automatisering</span>
         </div>
+      </div>
+
+      <!-- Feature toggles — visible status -->
+      <div style="display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem;">
+        <span class="badge ${c.feature_phone !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📞 Telefon ${c.feature_phone !== false ? 'PÅ' : 'AV'}</span>
+        <span class="badge ${c.feature_chatbot !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">💬 Chatbot ${c.feature_chatbot !== false ? 'PÅ' : 'AV'}</span>
+        <span class="badge ${c.feature_calendar !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📅 Kalender ${c.feature_calendar !== false ? 'PÅ' : 'AV'}</span>
+        <span class="badge ${c.feature_messages !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">✉️ Meldinger ${c.feature_messages !== false ? 'PÅ' : 'AV'}</span>
+        <span class="badge ${c.feature_base44 !== false ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">🌐 Base44 ${c.feature_base44 !== false ? 'PÅ' : 'AV'}</span>
+        <span class="badge ${c.feature_inbound_sms === true ? 'badge-green' : 'badge-red'}" style="font-size:.75rem; padding:.25rem .6rem;">📥 SMS ${c.feature_inbound_sms === true ? 'PÅ' : 'AV'}</span>
       </div>
 
       <div class="phone-highlight" style="margin-bottom:1.5rem;">

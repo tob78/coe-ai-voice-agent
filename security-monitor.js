@@ -231,7 +231,7 @@ function securityMiddleware(db) {
 // ============================================================
 
 function setupSecurityRoutes(app, db) {
-  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'coeadmin2024';
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Coe#Adm!n2024xQ';
   
   // === Admin: List all locked IPs ===
   app.get('/api/admin/lockouts', async (req, res) => {

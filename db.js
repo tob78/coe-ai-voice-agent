@@ -147,6 +147,9 @@ async function initDatabase() {
   `);
   console.log('   ✅ messages table');
 
+  // v3.9.54: self_healed_at column for calls
+  await pool.query(`ALTER TABLE calls ADD COLUMN IF NOT EXISTS self_healed_at TIMESTAMP`).catch(() => {});
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS call_sessions (
       id TEXT PRIMARY KEY,
@@ -252,7 +255,7 @@ async function initDatabase() {
         '+12602612731',
         'God dag, du snakker nå med Tom Bjørkhaugs Samlekrok sin KI-assistent. Det vil bli gjort opptak av samtalen for utviklingsformål. Hva kan jeg hjelpe deg med i dag?',
         null,
-        'samlekrok2024'
+        'Sam#Kr0k!24vR'
       ]
     );
     console.log('✅ Seed: Tom Bjørkhaugs Samlekrok oppretta med passord');
