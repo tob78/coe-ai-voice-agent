@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.62 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.64 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -77,25 +77,32 @@ SAMTALEFLYT — samle i denne rekkefølgen (hopp over besvarte steg):
 
 KJERNEATFERD:
 
-1. ALDRI FRYS: Etter hvert kundesvar → bekreft kort (maks 5 ord) + neste spørsmål. Aldri bli stille. Aldri tom respons. Usikker → "Fint. [neste spørsmål]".
+1. ALDRI FRYS: Etter hvert kundesvar → bekreft kort (maks 5 ord) + neste spørsmål. Aldri bli stille. Aldri tom respons. Usikker → "Fint. [neste spørsmål]". Etter at kunden gir info (navn, adresse, dato, klokkeslett, mat, lokale, gjester) — ALLTID bekreft og still neste spørsmål UMIDDELBART. ALDRI stopp opp midt i samtalen.
 
 2. ALDRI AVBRYT: La kunden snakke ferdig. Kunden snakker mens du snakker → STOPP og lytt.
 
-3. SMART LYTTING: Flere opplysninger i ett svar → noter ALT, hopp over besvarte steg. Aldri spør om noe kunden har sagt.
+3. SMART LYTTING: Flere opplysninger i ett svar → noter ALT, hopp over besvarte steg. Aldri spør om noe kunden allerede har sagt. Aldri gjenta spørsmål om navn, dato, adresse etc. som allerede er gitt.
 
-4. NAVNEBEKREFTELSE: Gjenta tilbake. Aldri endre. "Tobias" = Tobias. Usikker → "Kan du stave navnet?"
+4. NAVNEBEKREFTELSE: Gjenta tilbake ÉN GANG. Aldri endre. "Tobias" = Tobias. Usikker → "Kan du stave navnet?" Gjenta aldri navnespørsmålet etter bekreftelse.
 
 5. VENT PÅ SVAR: Etter spørsmål → vent minst 10 sek i stillhet. Aldri "beklager, fikk ikke med" rett etter spørsmål.
 
-6. DATO vs KLOKKESLETT: Tall + måned = DATO. "Klokka" + tall = KLOKKESLETT. Si datoer som ordenstall.
+6. DATO og ÅRSTALL: Tall + måned = DATO. "Klokka" + tall = KLOKKESLETT. Si datoer som ordenstall. VIKTIG: Bruk årstallet kunden sier — ALDRI korriger til gjeldende år. Sier kunden 2028, bruk 2028.
 
-ADRESSE: Gatenavn → postnummer → bekreft med stedsnavn. Bruk validate_address/lookup_postal_code. Maks 2 forsøk.
+7. 100% NORSK: ALDRI snakk engelsk. ALDRI si "just a sec", "one moment", "let me check", "hold on". Bruk ALLTID norsk: "Et øyeblikk", "Bare et lite øyeblikk", "La meg sjekke det". Hele samtalen skal være på norsk.
+
+8. FUNCTION CALLS: Når du kaller en funksjon (sjekker adresse, ledig tid osv.), si "Et øyeblikk" PÅ NORSK mens du venter. Fortsett samtalen umiddelbart etter resultatet — ALDRI frys.
+
+9. FLYT UTEN PAUSER: Etter hvert svar fra kunden, bekreft kort og gå videre. Eksempel:
+   Kunde sier mat → "Notert. Har dere et lokale?" Kunde sier lokale → "Fint. Hvilken dato?" Kunde sier dato → "Bra. Klokkeslett?" ALDRI stopp mellom svarene!
+
+ADRESSE: Gatenavn → postnummer → bekreft med stedsnavn. Bruk validate_address/lookup_postal_code. Maks 2 forsøk. Kunden sier "Baksidevegen" → skriv "Baksidevegen" — ALDRI gjett andre navn.
 FUNCTION CALLING: validate_address, lookup_postal_code, check_company_services, check_customer, check_availability, get_price_estimate, transferCall — bruk naturlig. Kall check_customer ved STARTEN. check_availability sjekker ledige tider. get_price_estimate gir prisoverslag.
-HUMAN ESCALATION: Bruk transferCall BARE når: kunden ber om menneske, du ikke forstår etter 3 forsøk, kunden spør om ting du ikke vet (lager, hvem er på jobb, tekniske detaljer). Si "Jeg kobler deg til en kollega" FØR transfer.
+HUMAN ESCALATION: Bruk transferCall BARE når: kunden ber om menneske, du ikke forstår etter 3 forsøk, kunden spør om ting du ikke vet. Si "Jeg kobler deg til en kollega" FØR transfer.
 AVSLUTNING: KUN ÉN GANG. Aldri "Goodbye". Vent 2-3 sek etter.
 STILLHET: 10+ sek → "Er du fortsatt der?" | 20+ sek → avslutt høflig.
 BEKREFTELSER: "ja"/"ja gjerne"/"stemmer" = gå videre umiddelbart.
-SPRÅK: Alle norske dialekter. Engelske fagord på engelsk. "K.I.-assistent" med tydelige bokstaver.
+SPRÅK: 100% norsk. ALDRI engelske ord eller setninger. "K.I.-assistent" med tydelige bokstaver.
 Klokkeslett: "halv tre"=14:30. Telefonnr siffer for siffer.
 Hvem laget AI: "Utviklet av Tobias Bjørkhaug."
 `;
@@ -128,7 +135,7 @@ const improvementsCache = new Map(); // companyId → { data, timestamp }
 const CACHE_TTL = 120000; // 2 minutes
 
 // === SMS RATE LIMITER (prevents Twilio 63038 spam) ===
-const smsRateLimit = { count: 0, date: new Date().toDateString(), maxPerDay: 6, blocked: false };
+const smsRateLimit = { count: 0, date: new Date().toDateString(), maxPerDay: 50, blocked: false };
 function canSendSMS() {
   const today = new Date().toDateString();
   if (smsRateLimit.date !== today) { smsRateLimit.count = 0; smsRateLimit.date = today; smsRateLimit.blocked = false; }
@@ -2900,6 +2907,23 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 } catch(logErr) { console.error('SMS logging feil:', logErr.message); }
               }
             } catch (smsErr) { console.error('Recovery SMS feil:', smsErr.message); }
+          }
+          
+          // 📨 Auto-bekreftelse SMS til kunde — MOMENTANT etter samtale
+          if (customerId && callerPhone !== 'ukjent') {
+            try {
+              const fullComp = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
+              if (fullComp?.feature_auto_confirm !== false) {
+                const custName = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
+                const autoMsg = `Hei${custName}! Takk for samtalen med ${fullComp.name}. Vi kommer tilbake til deg med bekreftelse. Ha en fin dag! 😊`;
+                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
+                const custSms = await twilio.messages.create({ body: autoMsg, from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: callerPhone });
+                console.log(`📨 Recovery: Auto-bekreftelse sendt til ${callerPhone}: ${custSms.sid}`);
+                try {
+                  await db.query(`INSERT INTO messages (customer_id, company_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, $2, 'customer', $3, $4, 'auto_confirm', $5, 'sent', NOW())`, [customerId, companyId, callerPhone, autoMsg, custSms.sid]);
+                } catch(logErr) { console.error('Auto-bekreftelse logging feil:', logErr.message); }
+              }
+            } catch (autoSmsErr) { console.error('Recovery auto-bekreftelse SMS feil:', autoSmsErr.message); }
           }
           
           console.log(`🔄 Vapi recovery: Lagret ${vc.id} for ${companyResult.rows[0].name} — ${customerName} (${outcome}, ${duration}s)`);
