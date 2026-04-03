@@ -795,16 +795,18 @@ function showDashFilteredCustomers(status) {
       <h3 style="font-weight:600; color:var(--text2);">${title}</h3>
       <button class="btn btn-secondary" style="font-size:.75rem;" onclick="this.closest('#dash-filtered-list').remove()">✕ Lukk</button>
     </div>
-    <table><thead><tr><th>Navn</th><th>Anrop</th><th>Telefon</th><th>Selskap</th><th>Dato</th><th>Tjeneste</th><th>Status</th></tr></thead><tbody>` +
-    filtered.map(c => `<tr style="cursor:pointer;" onclick="navigate('#/kunde/${c.id}')">
-      <td style="font-weight:500; color:var(--text);">${errorWarning(c)} ${c.name||'Ukjent'}</td>
-      <td style="font-size:.75rem; color:var(--text3);">${c.created_at ? fmtDateTime(c.created_at) : '–'}</td>
-      <td>${fmtPhone(c.phone)}</td>
-      <td>${c.company_name||'–'}</td>
-      <td>${fmtDate(c.preferred_date||c.appointment_date)}</td>
-      <td>${c.service_requested||'–'}</td>
-      <td>${statusBadge(c.status)}</td>
-    </tr>`).join('') + '</tbody></table></div>';
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:.5rem; margin-top:.5rem;">` +
+    filtered.map(c => `<div style="background:var(--bg2); border:1px solid var(--border); border-radius:.5rem; padding:.65rem .85rem; cursor:pointer; transition:all .15s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'" onclick="navigate('#/kunde/${c.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600; color:var(--text); font-size:.9rem;">${errorWarning(c)} ${c.name||'Ukjent'}</span>
+        ${statusBadge(c.status)}
+      </div>
+      <div style="font-size:.75rem; color:var(--text3); margin-top:.25rem;">${c.company_name||'–'} · ${fmtPhone(c.phone)}</div>
+      <div style="display:flex; justify-content:space-between; margin-top:.35rem; font-size:.78rem;">
+        <span style="color:var(--text2);">${c.service_requested||'–'}</span>
+        <span style="color:var(--text3);">${fmtDate(c.preferred_date||c.appointment_date)}</span>
+      </div>
+    </div>`).join('') + '</div></div>';
 }
 
 // ── Companies ──
@@ -1062,28 +1064,41 @@ function renderCompanyCustomerTable(custs) {
   const t = $('cd-table');
   if (!t) return;
   if (!custs.length) { t.innerHTML = emptyState('Ingen kunder funnet'); return; }
-  t.innerHTML = `<table><thead><tr>
-    <th>Navn</th><th>Kilde</th><th>Samtaler</th><th>Telefon</th><th>Dato</th><th>Tid</th><th>Tjeneste</th><th>Status</th><th>Postnr</th><th style="width:90px;">Handling</th>
-  </tr></thead><tbody>` +
+  t.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:.75rem;">` +
   custs.map(c => {
     const src = c.source||'Telefon';
     const srcIcon = src==='Chatbot' ? '💬' : src==='Manuell' ? '✋' : '📞';
     const srcColor = src==='Chatbot' ? '#8b5cf6' : src==='Manuell' ? '#f59e0b' : '#3b82f6';
     const callCount = c.call_count || 0;
-    const callBadge = callCount > 0 ? `<span style="font-size:.65rem; background:#3b82f622; color:#60a5fa; padding:.1rem .4rem; border-radius:99px; margin-left:.35rem; font-weight:700;">${callCount} 📞</span>` : '';
-    return `<tr>
-    <td style="font-weight:600; font-size:.95rem; color:var(--text); cursor:pointer;" onclick="navigate('#/kunde/${c.id}')">${errorWarning(c)} ${c.name||'Ukjent'}${callBadge}${c.cancelled?'<span class="badge badge-red" style="margin-left:.5rem;">AVBESTILT</span>':''}</td>
-    <td><span style="font-size:.7rem; background:${srcColor}22; color:${srcColor}; padding:.125rem .5rem; border-radius:1rem; font-weight:600;">${srcIcon} ${src}</span></td>
-    <td style="text-align:center;"><span style="font-weight:700; color:${callCount > 1 ? '#f59e0b' : 'var(--text2)'}; font-size:.9rem;">${callCount}</span></td>
-    <td>${fmtPhone(c.phone)}</td>
-    <td>${fmtDate(c.preferred_date || c.appointment_date)}</td>
-    <td>${c.preferred_time || c.appointment_time || '–'}</td>
-    <td>${c.service_requested || '–'}</td>
-    <td>${statusBadge(c.status)}</td>
-    <td>${c.postal_code||'–'}</td>
-    <td><button class="btn btn-secondary" style="font-size:.75rem; padding:.25rem .5rem;" onclick="event.stopPropagation();openEditCustomerModal(${c.id})">✏️ Rediger</button></td>
-  </tr>`;
-  }).join('') + '</tbody></table>';
+    const svc = c.service_requested || '–';
+    const date = fmtDate(c.preferred_date || c.appointment_date);
+    const time = c.preferred_time || c.appointment_time || '';
+    const dateTime = time ? `${date} kl ${time}` : date;
+    const confStatus = c.confirmation_status === 'confirmed' ? '✅' : c.confirmation_status === 'pending' ? '⏳' : '';
+    return `<div class="stat-card" style="cursor:pointer; padding:.85rem 1rem; transition:all .15s; border-left:3px solid ${srcColor};" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='${srcColor}'" onclick="navigate('#/kunde/${c.id}')">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:.5rem;">
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;">
+            ${errorWarning(c)}<span style="font-weight:700; font-size:1rem; color:var(--text);">${c.name||'Ukjent'}</span>
+            ${callCount > 1 ? `<span style="font-size:.65rem; background:#3b82f622; color:#60a5fa; padding:.1rem .4rem; border-radius:99px; font-weight:700;">${callCount} samtaler</span>` : ''}
+            ${c.cancelled ? '<span class="badge badge-red" style="font-size:.6rem;">AVBESTILT</span>' : ''}
+          </div>
+          <div style="font-size:.8rem; color:var(--text3); margin-top:.25rem;">${fmtPhone(c.phone)}${c.postal_code ? ` · ${c.postal_code}` : ''}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:.25rem; flex-shrink:0;">
+          ${statusBadge(c.status)}
+          <span style="font-size:.65rem; background:${srcColor}22; color:${srcColor}; padding:.1rem .45rem; border-radius:1rem; font-weight:600;">${srcIcon} ${src}</span>
+        </div>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:.6rem; padding-top:.5rem; border-top:1px solid var(--border);">
+        <div style="font-size:.8rem; color:var(--text2); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60%;" title="${svc}">${svc}</div>
+        <div style="font-size:.78rem; color:var(--text3); font-weight:500;">${confStatus} ${dateTime}</div>
+      </div>
+      <div style="margin-top:.5rem; text-align:right;">
+        <button class="btn btn-secondary" style="font-size:.7rem; padding:.2rem .5rem;" onclick="event.stopPropagation();openEditCustomerModal(${c.id})">✏️ Rediger</button>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
 }
 
 // ── Recent Callers (Nye innringere) ──

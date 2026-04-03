@@ -1,10 +1,10 @@
 // ===== SMS HANDLER =====
 // Handles SMS sending to montør and customer, plus reminders
 
-const twilioClient = require('twilio')(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+// Use Restricted API Key if available, fallback to Account SID + Auth Token
+const twilioClient = process.env.TWILIO_API_KEY_SID
+  ? require('twilio')(process.env.TWILIO_API_KEY_SID, process.env.TWILIO_API_KEY_SECRET, { accountSid: process.env.TWILIO_ACCOUNT_SID })
+  : require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const TWILIO_NUMBER = process.env.TWILIO_PHONE_NUMBER || '+12602612731';
 
 // ===== SEND ERROR ALERT TO BOSS =====
@@ -45,26 +45,113 @@ function formatPhone(phone) {
   return '+47' + p.replace(/^0+/, '');
 }
 
-// ===== SEND SMS HELPER =====
-async function sendSms(to, body) {
+// ===== SMS RATE LIMITER (global, prevents Twilio 63038 spam) =====
+const _smsRate = { count: 0, date: '', maxPerDay: 50 };
+function _canSendSMS() {
+  const today = new Date().toDateString();
+  if (_smsRate.date !== today) { _smsRate.count = 0; _smsRate.date = today; }
+  if (_smsRate.count >= _smsRate.maxPerDay) {
+    console.log(`⚠️ SMS daglig grense nådd (${_smsRate.count}/${_smsRate.maxPerDay}) — blokkerer SMS resten av dagen`);
+    return false;
+  }
+  return true;
+}
+
+// ===== SVEVE.NO NORSK SMS (primary for Norwegian numbers) =====
+async function sendViaSveve(to, body, fromName) {
+  const sveveUser = process.env.SVEVE_USER;
+  const svevePass = process.env.SVEVE_PASSWORD;
+  if (!sveveUser || !svevePass) return null; // Sveve not configured, fall through to Twilio
+  
+  // Strip +47 prefix for Sveve (wants 8-digit Norwegian numbers)
+  let sveveNumber = to;
+  if (sveveNumber.startsWith('+47')) sveveNumber = sveveNumber.slice(3);
+  else if (sveveNumber.startsWith('0047')) sveveNumber = sveveNumber.slice(4);
+  
+  // Only use Sveve for Norwegian numbers (8 digits)
+  if (!/^\d{8}$/.test(sveveNumber)) return null;
+  
+  const senderName = (fromName || 'COE AI').replace(/[æøåÆØÅ]/g, c => ({æ:'ae',ø:'o',å:'a',Æ:'Ae',Ø:'O',Å:'A'}[c]||c)).slice(0, 11);
+  
+  try {
+    const url = `https://sveve.no/SMS/SendMessage?user=${encodeURIComponent(sveveUser)}&passwd=${encodeURIComponent(svevePass)}&to=${sveveNumber}&msg=${encodeURIComponent(body)}&from=${encodeURIComponent(senderName)}&f=json`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.response && data.response.msgOkCount > 0) {
+      console.log(`📨 Sveve SMS sendt til ${sveveNumber} fra "${senderName}" (ID: ${data.response.ids?.[0]})`);
+      return { sid: `sveve_${data.response.ids?.[0]}`, provider: 'sveve' };
+    } else {
+      console.warn(`⚠️ Sveve SMS feilet:`, data.response?.fatalError || data.response?.errors || 'Ukjent feil');
+      return null; // Fall through to Twilio
+    }
+  } catch (err) {
+    console.warn(`⚠️ Sveve feil, faller tilbake til Twilio:`, err.message);
+    return null;
+  }
+}
+
+// ===== CENTRALIZED SMS LOGGING =====
+async function logSmsToDb(opts) {
+  try {
+    await db.run(
+      `INSERT INTO messages (customer_id, company_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, provider, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+      opts.customerId || null, opts.companyId || null, opts.recipientType || 'unknown',
+      opts.phone, opts.body?.substring(0, 2000), opts.messageType || 'sms',
+      opts.sid || null, opts.provider || 'twilio', opts.status || 'sent'
+    );
+  } catch (err) {
+    console.warn('⚠️ SMS logging to DB failed:', err.message);
+  }
+}
+
+// ===== SEND SMS HELPER (Sveve primary, Twilio fallback) =====
+// opts: { customerId, companyId, recipientType, messageType } — optional metadata for DB logging
+async function sendSms(to, body, companyName, opts = {}) {
   const formattedTo = formatPhone(to);
   if (!formattedTo) {
     console.error('❌ SMS failed: no valid phone number');
     return null;
   }
+  // Rate limit check — prevents spam loop
+  if (!_canSendSMS()) {
+    console.log(`⏸️ SMS til ${formattedTo} blokkert av daglig grense`);
+    return null;
+  }
+  
+  // Try Sveve first for Norwegian numbers (shows company name as sender)
+  if (formattedTo.startsWith('+47')) {
+    const sveveResult = await sendViaSveve(formattedTo, body, companyName);
+    if (sveveResult) {
+      _smsRate.count++;
+      console.log(`📨 SMS via Sveve (${_smsRate.count}/${_smsRate.maxPerDay} i dag)`);
+      // Log to DB
+      await logSmsToDb({ ...opts, phone: formattedTo, body, sid: sveveResult.sid, provider: 'sveve', status: 'sent' });
+      return sveveResult;
+    }
+  }
+  
+  // Fallback to Twilio
   try {
     const msg = await twilioClient.messages.create({
       body,
       from: TWILIO_NUMBER,
       to: formattedTo
     });
-    console.log(`📱 SMS sent to ${formattedTo}: ${msg.sid}`);
+    _smsRate.count++;
+    console.log(`📱 SMS via Twilio to ${formattedTo}: ${msg.sid} (${_smsRate.count}/${_smsRate.maxPerDay} i dag)`);
+    // Log to DB
+    await logSmsToDb({ ...opts, phone: formattedTo, body, sid: msg.sid, provider: 'twilio', status: 'sent' });
     return msg;
   } catch (err) {
     console.error(`❌ SMS failed to ${formattedTo}:`, err.message);
-    // Log more detail for Twilio trial issues
-    if (err.code === 21608 || err.code === 21610 || err.code === 21614) {
-      console.error('⚠️ TWILIO TRIAL: Nummeret er ikke verifisert i Twilio. Gå til Twilio Console → Verified Caller IDs og legg til nummeret.');
+    // Log failure to DB
+    await logSmsToDb({ ...opts, phone: formattedTo, body, sid: null, provider: 'twilio', status: 'failed' });
+    if (err.code === 63038) {
+      _smsRate.count = _smsRate.maxPerDay;
+      console.error('🛑 Twilio 63038: Daglig SMS-grense nådd hos Twilio — stopper alle SMS i dag');
+    } else if (err.code === 21608 || err.code === 21610 || err.code === 21614) {
+      console.error('⚠️ TWILIO TRIAL: Nummeret er ikke verifisert i Twilio.');
     }
     return null;
   }

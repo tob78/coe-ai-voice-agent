@@ -218,6 +218,9 @@ async function initDatabase() {
     'ALTER TABLE customers ADD COLUMN IF NOT EXISTS confirmation_status TEXT DEFAULT \'pending\'',
     'ALTER TABLE customers ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMP',
     'ALTER TABLE customers ADD COLUMN IF NOT EXISTS confirmed_by TEXT',
+    // Messages table — SMS logging improvements
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS company_id INTEGER',
+    'ALTER TABLE messages ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT \'twilio\'',
   ];
   for (const sql of migrations) {
     try { await pool.query(sql); } catch(e) { /* column may already exist */ }

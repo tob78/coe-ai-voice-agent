@@ -25,18 +25,18 @@ const { initCostTables, runDailyCostCheck, startCostMonitor } = require('./cost-
 
 // ===== FELLES BASE-PROMPT FOR ALLE VAPI-ASSISTENTER =====
 function buildVapiBasePrompt(company) {
-  // Beregn dagens dato og 6-måneders kalender for AI-kontekst
+  // Beregn dagens dato og 3-måneders kalender
   const now = new Date();
   const dayNames = ['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
   const dayShort = ['søn','man','tir','ons','tor','fre','lør'];
   const monthNames = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
   const todayStr = `${dayNames[now.getDay()]} ${now.getDate()}. ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
   
-  // Beregn 6-måneders kalender — kompakt format per uke
+  // Kompakt 3-måneders kalender
   let calendar = [];
   let currentWeek = [];
   let currentMonth = '';
-  for (let i = 0; i < 180; i++) {
+  for (let i = 0; i < 90; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() + i);
     const month = monthNames[d.getMonth()];
@@ -45,166 +45,62 @@ function buildVapiBasePrompt(company) {
       currentMonth = month;
       calendar.push(`--- ${month.toUpperCase()} ${d.getFullYear()} ---`);
     }
-    const dayNum = d.getDate();
-    const dayLabel = dayShort[d.getDay()];
-    currentWeek.push(`${dayLabel}${dayNum}`);
-    if (d.getDay() === 0 || i === 179) {
+    currentWeek.push(`${dayShort[d.getDay()]}${d.getDate()}`);
+    if (d.getDay() === 0 || i === 89) {
       calendar.push(currentWeek.join(' '));
       currentWeek = [];
     }
   }
   
-  return `⚠️ VIKTIGSTE REGEL: Etter HVERT svar fra kunden → SVAR UMIDDELBART med kort bekreftelse + neste spørsmål. ALDRI vær stille. ALDRI vent. MAKS 2 SEKUNDER responstid. TOM RESPONS = FORBUDT.
+  return `Du er en profesjonell, vennlig K.I.-assistent for ${company.name}. Du snakker norsk bokmål.
 
-Du er en norsk K.I.-assistent som svarer på telefonen for ${company.name}.
-I DAG ER: ${todayStr}
-UKENR: ${Math.ceil((Math.floor((now - new Date(now.getFullYear(),0,1)) / 86400000) + new Date(now.getFullYear(),0,1).getDay() + 1) / 7)}
+VIKTIG: Hilsen er allerede sagt via firstMessage. ALDRI gjenta hilsen. Start med å lytte.
 
-DATO-KALENDER (6 måneder):
-${calendar.join('\n')}
+I DAG: ${todayStr} | Uke ${Math.ceil((Math.floor((now - new Date(now.getFullYear(),0,1)) / 86400000) + new Date(now.getFullYear(),0,1).getDay() + 1) / 7)}
+KALENDER:\n${calendar.join('\\n')}
 
-GRUNNREGLER:
-- Snakk ALLTID norsk bokmål. Svar kort, maks 1-2 setninger per respons.
-- ALDRI gjenta ord i samme setning.
-- ALDRI si "takk så mye", "flott", "supert" mellom spørsmål — gå rett på neste.
-- ALDRI gjenta det kunden nettopp sa — bare gå videre.
-- ALDRI spør om telefonnummer — det hentes automatisk fra anrops-ID.
-- Svar ALLTID på kundens spørsmål FØR du fortsetter med bestillingen.
-- Hvis kunden spør "hva kan dere tilby?" — forklar tjenestene kort.
+SAMTALESTIL:
+- Maks 1-2 setninger per svar. Kort, naturlig, effektiv.
+- Aldri si "takk så mye", "flott", "supert" mellom spørsmål.
+- Aldri gjenta det kunden sa ordrett. Bekreft kort, gå videre.
+- Aldri spør om telefonnummer — hentes fra anrops-ID.
+- Svar på kundens spørsmål FØR du fortsetter bestillingen.
 
-SAMTALEFLYT (streng rekkefølge):
-1. Behov/problem — hva trenger kunden?
-2. 1-2 bransjespørsmål (kun hvis naturlig og relevant)
-3. Navn — "Hva er navnet ditt?"
-4. Adresse (ALDRI for frisør/salong-bransjer) — spør "Hva er adressen din?" og VENT på svar. Etter kunden svarer → spør "Og postnummer?" Når du har begge → bekreft med stedsnavn.
-5. Dato — spør "Hvilken dato passer for deg?" Hvis kunden gir én dato, spør "Har du noen alternativ dato i tillegg, i tilfelle den ikke passer?" Hvis kunden sier nei/bare den → gå videre. Hvis kunden gir flere → noter alle.
-6. Tidsrom — spør "Er du ledig hele dagen, eller har du et bestemt tidsrom?" Hvis kunden gir tidspunkt, spør om det gjelder alle datoene eller om de har ulike tidsrom per dato.
-7. AVSLUTT UMIDDELBART: "Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"
+SAMTALEFLYT — samle i denne rekkefølgen (hopp over besvarte steg):
+1. Behov — hva trenger kunden?
+2. Evt 1-2 oppfølgingsspørsmål (kun hvis naturlig)
+3. Navn — spør og GJENTA tilbake: "Da har jeg [navn], stemmer det?"
+4. Adresse + postnummer (ALDRI for frisør/salong) — bekreft med stedsnavn
+5. Dato — "Hvilken dato passer?" + spør om alternativ dato
+6. Tidsrom — "Er du ledig hele dagen, eller har du et bestemt tidsrom?"
+7. AVSLUTT: "Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"
 
-FUNCTION CALLING (SANNTID):
-- Du har tilgang til funksjoner du kan kalle under samtalen for å validere informasjon.
-- validate_address: Valider adresse + postnummer via Kartverket. Kall denne ETTER kunden gir adresse og postnummer.
-- lookup_postal_code: Slå opp stedsnavn for postnummer. Kall denne KUN hvis du er usikker — du kjenner allerede de fleste norske postnummer.
-- check_company_services: Hent liste over tjenester selskapet tilbyr. Kall denne hvis kunden spør "hva kan dere tilby?".
-- Du trenger IKKE nevne at du "sjekker" noe — bare bruk resultatet naturlig i svaret ditt.
+KJERNEATFERD:
 
-KRITISK:
-- Still ETT spørsmål av gangen — VENT på svar.
-- Når BÅDE dato OG tidsrom er samlet → AVSLUTT med avslutningsfrasen. Aldri still flere spørsmål etter tidsrom.
-- Si avslutningen KUN EN GANG — ALDRI legg på uten å ha sagt "Ha en fin dag!".
-- Spør ALDRI om noe du allerede har svar på. Sjekk hva som er samlet.
-- Hvis kunden gir flere ting i en setning, samle alt og hopp over utfylte steg.
-- ALDRI legg på FØR du har samlet dato OG tidsrom (med mindre kunden vil avslutte).
+1. ALDRI FRYS: Etter hvert kundesvar → bekreft kort (maks 5 ord) + neste spørsmål. Aldri bli stille. Aldri tom respons. Usikker → "Fint. [neste spørsmål]".
 
-SMART INFO-EKSTRAKSJON (UFRAVIKELIG):
-- Hvis kunden gir FLERE opplysninger i ett svar → NOTER ALT og HOPP OVER steg som allerede er besvart.
-- Eksempel: "Hei, jeg heter Frank, bor på Bakkelia 5, trenger rørlegger" → noter alt, hopp rett til dato.
-- ALDRI spør om noe kunden allerede har sagt!
+2. ALDRI AVBRYT: La kunden snakke ferdig. Kunden snakker mens du snakker → STOPP og lytt.
 
-NAVNEBEKREFTELSE (UFRAVIKELIG):
-- Når kunden sier navnet → GJENTA tilbake: "Da har jeg [navn]. Stemmer det?"
-- ALDRI endre eller tolke navn. "Tobias" = Tobias, ALDRI "Torbjørn". Skriv NØYAKTIG hva kunden sier.
-- Hvis usikker → "Unnskyld, kan du stave navnet?"
+3. SMART LYTTING: Flere opplysninger i ett svar → noter ALT, hopp over besvarte steg. Aldri spør om noe kunden har sagt.
 
-ANTI-GJENTAKELSE (UFRAVIKELIG):
-- Hvis kunden har sagt navnet sitt → DU HAR NAVNET. ALDRI spør igjen.
-- Hvis kunden har sagt adressen → DU HAR ADRESSEN. ALDRI spør igjen.
-- Selv om kunden sier navnet tidlig, uformelt eller midt i en setning — DU HUSKER DET.
+4. NAVNEBEKREFTELSE: Gjenta tilbake. Aldri endre. "Tobias" = Tobias. Usikker → "Kan du stave navnet?"
 
-ALDRI AVBRYT KUNDEN (KRITISK):
-- Når kunden snakker → VENT til kunden er HELT FERDIG. ALDRI avbryt midt i en setning.
-- Hvis kunden begynner å snakke mens du snakker → STOPP UMIDDELBART og la kunden prate ferdig.
-- Kunden kan gi mye info på én gang — LA DEM SNAKKE FERDIG, trekk ut alt, bekreft kort.
+5. VENT PÅ SVAR: Etter spørsmål → vent minst 10 sek i stillhet. Aldri "beklager, fikk ikke med" rett etter spørsmål.
 
-ALDRI-LEGG-PÅ-REGLER (UFRAVIKELIG):
-- Du skal ALDRI legge på samtalen selv. BARE kunden kan legge på.
-- Hvis du IKKE hører hva kunden sa → si "Beklager, jeg hørte ikke helt. Kan du gjenta?" — ALDRI gå videre uten svar.
-- Hvis det er stille i 10+ sekunder → si "Er du fortsatt der?" — ALDRI bare legg på.
-- Hvis kunden sier "ja", "ja gjerne", "det høres bra ut", "gjør det" → det er BEKREFTELSE. Gå videre til neste steg!
-- Kunden sier "ja" på befaring/tjeneste = kunden VIL ha det. Ikke legg på. Fortsett med navn/adresse/dato.
-- Legg ALDRI på midt i en samtale uten avslutningsfrasen.
-- Etter avslutningsfrasen — vent 2-3 sekunder. ALDRI kutt umiddelbart.
+6. DATO vs KLOKKESLETT: Tall + måned = DATO. "Klokka" + tall = KLOKKESLETT. Si datoer som ordenstall.
 
-BEFARING:
-- Hvis kunden nevner befaring, eller du foreslår befaring og kunden sier ja → noter "Befaring ønsket" og fortsett med resten av flyten.
-- Befaring erstatter IKKE resten av flyten. Du MÅ fortsatt samle navn, adresse, dato, tidsrom.
-
-DATO-REGLER (KRITISK — BRUK 6-MÅNEDERS KALENDEREN OVENFOR):
-- Du har en KOMPLETT 6-måneders kalender. Slå OPP i den — ALDRI gjett!
-- "neste torsdag" → finn neste tor i kalenderen → si dato som ordenstall → gå til tidsrom. ALDRI spør bekreftelse!
-- "i neste uke" = mandag neste uke. "uken etter" = uka etter neste.
-- "om to dager" / "i overmorgen" = regn fra i dag med kalenderen.
-- "i påska" / "etter påske" / "rundt 17. mai" = slå opp i kalenderen.
-- "om to uker" = +14 dager. "om en måned" = +30 dager.
-- Si datoer som ordenstall: "niende april", ALDRI "9 april".
-- Maks 1 oppfølgingsspørsmål om dato — gå videre til tidsrom.
-- "hele uka/hele uken/hel uke/når som helst" = kunden er fleksibel! Si "Fint, da noterer jeg at du er ledig hele uka" og gå RETT til tidsrom. ALDRI mas om spesifikk dag!
-- "ledig mandag til fredag/alle dager" = fleksibel hele uka. Gå til tidsrom.
-- Hvis kunden gir en uke (f.eks. "uke 15" eller "neste uke") → noter hele uka og gå til tidsrom. ALDRI spør om enkeltdag.
-
-KLOKKESLETT:
-- "halv tre" = 14:30. "kvart over fire" = 16:15. "kvart på fem" = 16:45.
-- "etter jobb" = ca klokka 16. "på morgenen/morran" = ca 8-9. "formidda" = 9-12. "ettermidda" = 12-16. "kveld" = 17-20.
-- Telefonnumre siffer for siffer: "9-8-8-8-8-8-8-8".
-
-SPRÅK OG DIALEKT:
-- Du forstår ALLE norske dialekter nativt. Gudbrandsdal, Trøndersk, Vestlandsk, Nord-norsk — alt.
-- Engelske fagord (extensions, highlights, balayage, microblading) uttales naturlig på engelsk.
-- Adresser: lytt nøye og gjenta det du hører for bekreftelse. Maks 2 forsøk → gå videre.
-- Si "K.I.-assistent" med tydelige bokstaver, ikke "ki-assistent".
-
-ADRESSE-VALIDERING (KRITISK — FØLG NØYAKTIG):
-1. Si: "Hva er adressen din?" — og STOPP. Si INGENTING MER. Vent i STILLHET til kunden svarer.
-2. FORBUDT: Du skal ALDRI si "beklager, fikk ikke med adressen", "kan du gjenta adressen", "unnskyld" eller NOEN form for unnskyldning ETTER du har stilt adresse-spørsmålet. Du MÅ vente MINST 10 sekunder i stillhet. Kunden trenger tid til å tenke og svare.
-3. Etter kunden sier gatenavn+nummer → spør: "Og postnummer?"
-4. Når du har begge → slå opp postnummer i Gudbrandsdal-lista nedenfor og bekreft: "Kjerringdokka 13 a, 2640 Vinstra — stemmer det?"
-5. Hvis kunden sier gatenavn OG postnummer i samme setning → hopp rett til bekreftelse.
-6. Maks 2 forsøk totalt → gå videre uansett.
-Postnummer-stedsnavn (Gudbrandsdal): 2600=Lillehammer, 2601=Lillehammer, 2609=Lillehammer, 2610=Mesnali, 2611=Lillehammer, 2612=Lillehammer, 2613=Lillehammer, 2615=Lillehammer, 2616=Lillehammer, 2618=Lillehammer, 2619=Lillehammer, 2624=Lillehammer, 2625=Fåberg, 2626=Lillehammer, 2629=Lillehammer, 2630=Ringebu, 2631=Ringebu, 2632=Venabygd, 2634=Fåvang, 2635=Tretten, 2636=Øyer, 2637=Øyer, 2640=Vinstra, 2642=Kvam, 2643=Kvam, 2644=Hundorp, 2646=Harpefoss, 2647=Sør-Fron, 2648=Sør-Fron, 2649=Østre Gausdal, 2651=Gausdal, 2652=Svingvoll, 2653=Vestre Gausdal, 2656=Follebu, 2657=Svatsum, 2658=Espedalen, 2660=Dombås, 2661=Hjerkinn, 2662=Dovre, 2663=Toftemo, 2664=Sel, 2665=Otta, 2670=Otta, 2672=Sel, 2674=Mysuseter, 2680=Vågå, 2682=Lalm, 2684=Vågåmo, 2686=Lom, 2687=Bøverdalen, 2690=Skjåk, 2693=Nordberg, 2695=Grotli.
-- Hvis postnummer ikke finnes i lista → spør "Hvilket sted er det?" — maks 1 forsøk, gå videre.
-
-ANTI-FRYS (KRITISK — UFRAVIKELIG — HØYESTE PRIORITET):
-- HVER GANG kunden svarer på et spørsmål → du MÅ UMIDDELBART si noe og stille neste spørsmål. ALDRI bli stille.
-- Mønster som ALLTID skal følges: [kundens svar] → [kort bekreftelse, maks 5 ord] + [neste spørsmål i flyten]. INGEN PAUSE mellom.
-- Eksempel: Kunde sier "utkjøring" → Du sier "Fint, utkjøring. Hva er navnet ditt?"
-- Eksempel: Kunde sier "Tobias" → Du sier "Tobias. Hvilken dato er arrangementet?"
-- Eksempel: Kunde sier "niende april" → Du sier "Niende april. Når skal maten serveres?"
-- Du skal ALDRI bli stille etter å ha mottatt et svar. ALDRI. Hvis du er usikker → si "Fint" og gå videre.
-- ALDRI generer tom respons. Hvert svar MÅ inneholde tekst OG et spørsmål (med mindre du avslutter).
-- Hvis kunden FAKTISK har svart og du ikke oppfattet det → da kan du be om gjentakelse.
-- Hvis du venter på function calling-resultat → si "Et øyeblikk" mens du venter. ALDRI bare vær stille.
-
-ALDRI AVBRYT KUNDEN (KRITISK):
-- Når kunden snakker → du MÅ vente til kunden er HELT FERDIG med å prate. ALDRI avbryt midt i en setning.
-- Hvis kunden begynner å snakke mens du snakker → STOPP UMIDDELBART og la kunden prate ferdig.
-- Kunden kan gi mye info på én gang (navn, tjeneste, dato, gjester osv.) — LA DEM SNAKKE FERDIG.
-- Etter kunden er ferdig → trekk ut ALL info som ble gitt, og hopp over spørsmål som allerede er besvart.
-
-SMART INFO-EKSTRAKSJON (KRITISK):
-- Når kunden gir flere opplysninger i samme setning → NOTER ALT og HOPP OVER de spørsmålene i flyten.
-- Eksempel: "Hei, jeg heter Frank og trenger catering for 50 gjester til konfirmasjon den 17. april" → Du har nå: navn=Frank, gjester=50, arrangement=konfirmasjon, dato=17. april. ALDRI spør om noe av dette igjen.
-- Etter slik lang info → bekreft kort hva du har notert og gå til NESTE UBESVARTE spørsmål.
-- Eksempel respons: "Frank, konfirmasjon for femti gjester den syttende april. Ønsker dere utkjøring eller henter dere maten?"
-
-INGEN GOODBYE/FAREWELL:
-- Du skal ALDRI si "Goodbye", "Bye bye", "Adjø", "Ha det" eller lignende engelske/internasjonale avskjedshilsner.
-- Avslutt KUN med den norske avslutningsfrasen: "Tusen takk! Vi kommer tilbake til deg med bekreftelse på tidspunkt. Ha en fin dag!"
-- Si denne KUN ÉN GANG, og ALDRI legg til noe etter den.
-- ALDRI heng deg opp på ett tema. Maks 2 forsøk på hvert spørsmål → gå videre uansett.
-
-## ABSOLUTT REGEL: VENT PÅ SVAR
-- Etter HVERT spørsmål du stiller: STOPP HELT. Si INGENTING. Vent i STILLHET i minst 10 sekunder.
-- FORBUDT å si "beklager", "fikk ikke med", "kan du gjenta", "unnskyld" ETTER du nettopp stilte et spørsmål. Du MÅ VENTE minst 10 sekunder først.
-- Hvis kunden ikke svarer etter 10+ sekunder → si BARE "Er du fortsatt der?" — ALDRI noe annet.
-- Hvis kunden fortsatt ikke svarer etter 15+ sekunder → si "Jeg er her hvis du trenger hjelp. Ha en fin dag!" og avslutt.
-- ALDRI si "beklager fikk ikke med" som FØRSTE ting etter et spørsmål. Det frustrerer kunder.
-- Husk: kunder trenger tid til å tenke, finne informasjon, snakke med andre i rommet.
-
-SPESIELLE SITUASJONER:
-- Hast/lekkasje/skade: spør om detaljer, noter i spesielle_notater.
-- Hvem laget AI: "Denne K.I.-assistenten er utviklet av Tobias Bjørkhaug. Skal jeg koble deg til ham?"
+ADRESSE: Gatenavn → postnummer → bekreft med stedsnavn. Bruk validate_address/lookup_postal_code. Maks 2 forsøk.
+FUNCTION CALLING: validate_address, lookup_postal_code, check_company_services, check_customer, transferCall — bruk naturlig. Kall check_customer med innringerens telefonnummer ved STARTEN av samtalen for å sjekke om kunden har ringt før.
+HUMAN ESCALATION: Bruk transferCall BARE når: kunden ber om menneske, du ikke forstår etter 3 forsøk, kunden spør om ting du ikke vet (lager, hvem er på jobb, tekniske detaljer). Si "Jeg kobler deg til en kollega" FØR transfer.
+AVSLUTNING: KUN ÉN GANG. Aldri "Goodbye". Vent 2-3 sek etter.
+STILLHET: 10+ sek → "Er du fortsatt der?" | 20+ sek → avslutt høflig.
+BEKREFTELSER: "ja"/"ja gjerne"/"stemmer" = gå videre umiddelbart.
+SPRÅK: Alle norske dialekter. Engelske fagord på engelsk. "K.I.-assistent" med tydelige bokstaver.
+Klokkeslett: "halv tre"=14:30. Telefonnr siffer for siffer.
+Hvem laget AI: "Utviklet av Tobias Bjørkhaug."
 `;
 }
+
 
 const app = express();
 app.use(cors());
@@ -230,6 +126,21 @@ const BASE_URL = process.env.BASE_URL ||
 // ===== IMPROVEMENTS CACHE (avoid DB query every turn) =====
 const improvementsCache = new Map(); // companyId → { data, timestamp }
 const CACHE_TTL = 120000; // 2 minutes
+
+// === SMS RATE LIMITER (prevents Twilio 63038 spam) ===
+const smsRateLimit = { count: 0, date: new Date().toDateString(), maxPerDay: 6, blocked: false };
+function canSendSMS() {
+  const today = new Date().toDateString();
+  if (smsRateLimit.date !== today) { smsRateLimit.count = 0; smsRateLimit.date = today; smsRateLimit.blocked = false; }
+  if (smsRateLimit.count >= smsRateLimit.maxPerDay) {
+    if (!smsRateLimit.blocked) { console.log(`⚠️ SMS daglig grense nådd (${smsRateLimit.maxPerDay}) — stopper SMS til i morgen`); smsRateLimit.blocked = true; }
+    return false;
+  }
+  return true;
+}
+function trackSMSSent() { smsRateLimit.count++; console.log(`📊 SMS sendt i dag: ${smsRateLimit.count}/${smsRateLimit.maxPerDay}`); }
+// Also deduplicate: track which call IDs already got SMS
+const smsSentForCall = new Set();
 
 async function getCachedImprovements(companyId) {
   const cached = improvementsCache.get(companyId);
@@ -336,7 +247,7 @@ async function transcribeWithWhisper(recordingUrl, recordingSid, companyContext)
   
   // Download recording from Twilio (requires auth)
   const authHeader = 'Basic ' + Buffer.from(
-    `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+    `${process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN}`
   ).toString('base64');
   
   // Retry download up to 3 times (recording may not be ready immediately)
@@ -387,7 +298,7 @@ async function transcribeFullRecording(audioUrl, callId) {
     const headers = {};
     if (!isVapi) {
       headers['Authorization'] = 'Basic ' + Buffer.from(
-        `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+        `${process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN}`
       ).toString('base64');
     }
     
@@ -589,6 +500,7 @@ app.get('/health', async (req, res) => {
         openai: !!process.env.OPENAI_API_KEY,
         twilio_sid: !!process.env.TWILIO_ACCOUNT_SID,
         twilio_token: !!process.env.TWILIO_AUTH_TOKEN,
+        twilio_api_key: !!process.env.TWILIO_API_KEY_SID,
         database: !!process.env.DATABASE_URL
       }
     });
@@ -666,7 +578,7 @@ app.post('/twilio/voice', async (req, res) => {
 
     // Start call recording via REST API (runs in background, doesn't block TwiML)
     try {
-      const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const twilioClient = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
       twilioClient.calls(callSid).recordings.create({
         recordingStatusCallback: `${BASE_URL}/twilio/recording`,
         recordingStatusCallbackMethod: 'POST',
@@ -2897,7 +2809,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 if (extractedInfo.meny_onsker) parts.push(`Meny: ${extractedInfo.meny_onsker}`);
                 if (extractedInfo.lokale) parts.push(`Lokale: ${extractedInfo.lokale}`);
                 if (extractedInfo.comment) parts.push(`Kommentar: ${extractedInfo.comment}`);
-                const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
                 const smsMsg = await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
                 console.log(`✅ Recovery SMS sendt til ${targetPhone}: ${smsMsg.sid}`);
                 try {
@@ -3033,7 +2945,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 if (extractedInfo.address) parts.push(`Adresse: ${extractedInfo.address}${extractedInfo.postal_code ? ' ' + extractedInfo.postal_code : ''}`);
                 if (extractedInfo.preferred_date) parts.push(`Dato: ${extractedInfo.preferred_date}`);
                 try {
-                  const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+                  const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
                   await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
                   console.log(`✅ Self-healing SMS sendt for call ${call.id}`);
                 } catch(smsErr) { console.error('Self-healing SMS feil:', smsErr.message); }
@@ -3082,6 +2994,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
         
         for (const call of missedCalls) {
           try {
+            if (!canSendSMS()) { console.log('⚠️ SMS daglig grense nådd — stopper catch-up'); break; }
             const targetPhone = call.montour_phone || call.boss_phone;
             if (!targetPhone) continue;
             
@@ -3100,12 +3013,13 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             if (info.meny_onsker) parts.push(`Meny: ${info.meny_onsker}`);
             if (info.comment) parts.push(`Kommentar: ${info.comment}`);
             
-            const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+            const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
             const smsMsg = await twilio.messages.create({
               body: parts.join('\n'),
               from: process.env.TWILIO_PHONE_NUMBER || '+12602612731',
               to: targetPhone
             });
+            trackSMSSent();
             console.log(`✅ SMS catch-up sendt for call ${call.call_id}: ${smsMsg.sid}`);
             
             // Log SMS
@@ -3135,7 +3049,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
 
     // Configure Twilio StatusCallback for all phone numbers (catches hangups)
     try {
-      const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      const twilioClient = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
       const numbers = await twilioClient.incomingPhoneNumbers.list();
       for (const num of numbers) {
         if (!num.statusCallback || !num.statusCallback.includes('/twilio/call-status')) {
@@ -3234,12 +3148,52 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
     }
   }
 
-  function extractCompanyIdFromCall(payload) {
-    // Try to extract company ID from call metadata or assistant ID
+  // Cache for assistantId → companyId mapping
+  const assistantCompanyCache = {};
+  async function extractCompanyIdFromCall(payload) {
     const assistantId = payload?.message?.call?.assistantId || payload?.call?.assistantId;
-    // We'll need to look this up from the database — for now return null
-    // The auto-recovery will handle company matching
+    if (!assistantId) return null;
+    if (assistantCompanyCache[assistantId]) return assistantCompanyCache[assistantId];
+    try {
+      const row = await db.get('SELECT id FROM companies WHERE vapi_assistant_id = $1', assistantId);
+      if (row) { assistantCompanyCache[assistantId] = row.id; return row.id; }
+    } catch(e) { console.error('extractCompanyId error:', e.message); }
     return null;
+  }
+
+  async function handleCheckCustomer(phone, companyId, dbConn) {
+    try {
+      if (!phone) return JSON.stringify({ returning: false, message: 'Ingen telefonnummer oppgitt' });
+      // Normalize phone
+      let p = phone.replace(/[\s\-\(\)]/g, '');
+      if (!p.startsWith('+')) p = p.startsWith('47') && p.length === 10 ? '+' + p : '+47' + p;
+      
+      const customer = await dbConn.get(
+        `SELECT cu.id, cu.name, cu.phone, COUNT(b.id) as booking_count, 
+         MAX(b.service_request) as last_service, MAX(b.date_requested) as last_date
+         FROM customers cu
+         LEFT JOIN bookings b ON b.customer_id = cu.id
+         WHERE cu.phone = $1 ${companyId ? 'AND cu.company_id = $2' : ''}
+         GROUP BY cu.id, cu.name, cu.phone
+         ORDER BY cu.id DESC LIMIT 1`,
+        companyId ? [p, companyId] : [p]
+      );
+      
+      if (customer && customer.name && customer.name !== 'Ny innringer') {
+        return JSON.stringify({
+          returning: true,
+          name: customer.name,
+          booking_count: customer.booking_count || 0,
+          last_service: customer.last_service || null,
+          last_date: customer.last_date || null,
+          instruction: `Kunden heter ${customer.name} og har ringt ${customer.booking_count} gang(er) før. Si: "Hei ${customer.name}! Hyggelig å høre fra deg igjen. Gjelder dette en ny bestilling, eller handler det om noe vi har avtalt fra før?"`
+        });
+      }
+      return JSON.stringify({ returning: false, message: 'Ny kunde — følg standard samtaleflyt' });
+    } catch (err) {
+      console.error('check_customer error:', err.message);
+      return JSON.stringify({ returning: false, error: err.message });
+    }
   }
 
   // ===== VAPI WEBHOOK — mottar events fra Vapi voice assistant =====
@@ -3276,8 +3230,11 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             } else if (fnName === 'lookup_postal_code') {
               result = await handleLookupPostalCode(args);
             } else if (fnName === 'check_company_services') {
-              const companyId = extractCompanyIdFromCall(event);
+              const companyId = await extractCompanyIdFromCall(event);
               result = await handleCheckServices(companyId, db);
+            } else if (fnName === 'check_customer') {
+              const companyId = await extractCompanyIdFromCall(event);
+              result = await handleCheckCustomer(args.phone, companyId, db);
             } else {
               result = JSON.stringify({ error: 'Unknown function' });
             }
@@ -3512,7 +3469,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                 smsBody = `📞 Ny innringer — ${company.name}\n\nIngen bestilling\nTlf: ${customerPhone || 'Ukjent'}\nVarighet: ${Math.round(duration)}s\nSammendrag: ${summary || transcriptText?.substring(0, 200) || 'Kort samtale'}`;
               }
               try {
-                const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
                 await twilio.messages.create({
                   body: smsBody,
                   from: process.env.TWILIO_PHONE_NUMBER || '+12602612731',
@@ -3645,6 +3602,49 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                     type: 'object',
                     properties: {},
                     required: []
+                  }
+                }
+              },
+              {
+                type: 'function',
+                function: {
+                  name: 'check_customer',
+                  description: 'Checks if this phone number belongs to an existing customer with previous bookings. Call this at the START of every conversation to check if the caller is a returning customer. If they are, greet them by name and ask if this is a new booking or about an existing one.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      phone: { type: 'string', description: 'The caller phone number in E.164 format' }
+                    },
+                    required: ['phone']
+                  }
+                }
+              },
+              {
+                type: 'transferCall',
+                destinations: [{
+                  type: 'number',
+                  number: company.montour_phone || company.boss_phone || '+4797479157',
+                  message: 'Jeg kobler deg nå til en kollega. Vennligst vent et øyeblikk.',
+                  transferPlan: {
+                    mode: 'warm-transfer-with-summary',
+                    summaryPlan: {
+                      enabled: true,
+                      messages: [
+                        { role: 'system', content: 'Gi en kort oppsummering på norsk av hva kunden trenger.' },
+                        { role: 'user', content: 'Her er transkripsjonen:\n\n{{transcript}}\n\n' }
+                      ]
+                    }
+                  }
+                }],
+                function: {
+                  name: 'transferCall',
+                  description: 'Overfør samtalen til en menneskelig kollega. Bruk BARE når: 1) Kunden eksplisitt ber om å snakke med et menneske, 2) Du ikke kan svare etter 3 forsøk, 3) Kunden spør om lagerbeholdning/hvem som er på jobb/andre spørsmål du ikke kan svare på, 4) Kunden er frustrert eller misfornøyd.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      destination: { type: 'string', description: 'The phone number to transfer to' }
+                    },
+                    required: ['destination']
                   }
                 }
               }
@@ -3784,6 +3784,49 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
                     type: 'object',
                     properties: {},
                     required: []
+                  }
+                }
+              },
+              {
+                type: 'function',
+                function: {
+                  name: 'check_customer',
+                  description: 'Checks if this phone number belongs to an existing customer with previous bookings. Call this at the START of every conversation to check if the caller is a returning customer.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      phone: { type: 'string', description: 'Caller phone number in E.164 format' }
+                    },
+                    required: ['phone']
+                  }
+                }
+              },
+              {
+                type: 'transferCall',
+                destinations: [{
+                  type: 'number',
+                  number: company.montour_phone || company.boss_phone || '+4797479157',
+                  message: 'Jeg kobler deg nå til en kollega. Vennligst vent et øyeblikk.',
+                  transferPlan: {
+                    mode: 'warm-transfer-with-summary',
+                    summaryPlan: {
+                      enabled: true,
+                      messages: [
+                        { role: 'system', content: 'Gi en kort oppsummering på norsk av hva kunden trenger.' },
+                        { role: 'user', content: 'Her er transkripsjonen:\n\n{{transcript}}\n\n' }
+                      ]
+                    }
+                  }
+                }],
+                function: {
+                  name: 'transferCall',
+                  description: 'Overfør samtalen til en menneskelig kollega. Bruk BARE når: 1) Kunden eksplisitt ber om å snakke med et menneske, 2) Du ikke kan svare etter 3 forsøk, 3) Kunden spør om lagerbeholdning/hvem som er på jobb/andre spørsmål du ikke kan svare på, 4) Kunden er frustrert eller misfornøyd.',
+                  parameters: {
+                    type: 'object',
+                    properties: {
+                      destination: { type: 'string', description: 'The phone number to transfer to' }
+                    },
+                    required: ['destination']
                   }
                 }
               }
@@ -4031,7 +4074,7 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
               if (extractedInfo.preferred_date) parts.push(`Dato: ${extractedInfo.preferred_date}`);
               if (extractedInfo.preferred_time) parts.push(`Tid: ${extractedInfo.preferred_time}`);
               try {
-                const twilio = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+                const twilio = require('twilio')(process.env.TWILIO_API_KEY_SID || process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_API_KEY_SECRET || process.env.TWILIO_AUTH_TOKEN, { accountSid: process.env.TWILIO_ACCOUNT_SID });
                 await twilio.messages.create({ body: parts.join('\n'), from: process.env.TWILIO_PHONE_NUMBER || '+12602612731', to: targetPhone });
                 item.smsSent = targetPhone;
               } catch (smsErr) { item.smsError = smsErr.message; }
