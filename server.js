@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.70 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.64 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -22,6 +22,7 @@ const { smartVerify, verifyCustomerData } = require('./registry-lookup');
 const { startHealthMonitor, runHealthCheck, getDetailedStatus } = require('./health-monitor');
 const { initSecurityTables, securityMiddleware, startSecurityCrons, setupSecurityRoutes, runSecurityAudit } = require('./security-monitor');
 const { initCostTables, runDailyCostCheck, startCostMonitor } = require('./cost-monitor');
+const monitoring = require('./monitoring');
 
 // ===== FELLES BASE-PROMPT FOR ALLE VAPI-ASSISTENTER =====
 function buildVapiBasePrompt(company) {
@@ -2492,6 +2493,11 @@ app.post('/api/auth/unlock', (req, res) => {
     await initCostTables(db);
     startCostMonitor(db);
     console.log('💰 Cost monitor active!');
+
+    // 📊 Monitoring — daily report, SMS limit, GitHub token (replaces Tasklet triggers)
+    monitoring.init(pool);
+    monitoring.registerRoutes(app);
+    console.log('📊 Monitoring module active!');
 
     // ===== VAPI AUTO-RECOVERY — henter tapte samtaler fra Vapi hvert minutt =====
     // Definert globalt slik at debug-endepunkt kan kalle den
