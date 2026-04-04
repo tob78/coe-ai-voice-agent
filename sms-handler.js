@@ -460,7 +460,7 @@ async function checkAndSendReminders(db) {
   // ===== NEW: Read from BOOKINGS table (primary source of dates) =====
   const bookings = await db.all(`
     SELECT b.id as booking_id, b.preferred_date, b.preferred_time, b.confirmation_status,
-           b.notes, c.id as customer_id, c.name, c.phone, c.reminder_sent,
+           b.comment, c.id as customer_id, c.name, c.phone, c.reminder_sent,
            comp.name as company_name, comp.montour_phone, comp.sms_remind_customer
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
