@@ -2405,13 +2405,10 @@ function openNewCompanyModal() {
           <span id="nc-sms-label" style="font-size:.875rem; font-weight:500; color:var(--text2);">📋 Ansattvarsling etter samtale</span>
         </label>
         <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
-          <input type="checkbox" id="nc-feat-auto-confirm" checked style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📨 Auto-bekreftelse "Vi kommer tilbake TIL DEG"</span>
+          <input type="checkbox" id="nc-autoconfirm" checked style="width:1.1rem; height:1.1rem;">
+          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">📅 Autobekreftelse (KI sjekker kalender + booker automatisk)</span>
         </label>
-        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
-          <input type="checkbox" id="nc-sms-customer" checked style="width:1.1rem; height:1.1rem;">
-          <span style="font-size:.875rem; font-weight:500; color:var(--text2);">✅ Kundebekreftelse ved ansatt-klikk</span>
-        </label>
+        <p style="font-size:.65rem; color:#94a3b8; margin-left:1.6rem; margin-top:-.2rem; margin-bottom:.4rem;">AV = ansatt bekrefter manuelt, legger inn datoer selv</p>
         <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer; margin-bottom:.4rem;">
           <input type="checkbox" id="nc-sms-reminder" checked style="width:1.1rem; height:1.1rem;">
           <span style="font-size:.875rem; font-weight:500; color:var(--text2);">⏰ Påminnelse før avtale</span>
@@ -2436,6 +2433,34 @@ function openNewCompanyModal() {
         <label style="font-size:.875rem; font-weight:500; color:#4ade80;">KI-spørsmål for valgt bransje</label>
         <div id="nc-questions" style="margin-top:.5rem; display:flex; flex-wrap:wrap; gap:.5rem;"></div>
       </div>
+      <!-- Ledige tider (åpningstider) -->
+      <div id="nc-availability-section" style="padding:.75rem; background:#0f2a4a; border:1px solid #1a5276; border-radius:.5rem;">
+        <p style="font-size:.75rem; color:#60a5fa; font-weight:700; margin-bottom:.5rem;">📅 Ledige tider (åpningstider)</p>
+        <div id="nc-avail-list" style="margin-bottom:.5rem;"></div>
+        <div style="display:flex; gap:.4rem; flex-wrap:wrap; align-items:center;">
+          <select id="nc-avail-day" style="padding:5px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.8rem;">
+            <option value="1">Mandag</option>
+            <option value="2">Tirsdag</option>
+            <option value="3">Onsdag</option>
+            <option value="4">Torsdag</option>
+            <option value="5">Fredag</option>
+            <option value="6">Lørdag</option>
+            <option value="0">Søndag</option>
+          </select>
+          <input type="time" id="nc-avail-start" value="09:00" style="padding:5px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.8rem;">
+          <span style="color:#94a3b8;">–</span>
+          <input type="time" id="nc-avail-end" value="17:00" style="padding:5px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.8rem;">
+          <select id="nc-avail-dur" style="padding:5px; border-radius:6px; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.8rem;">
+            <option value="30">30 min</option>
+            <option value="45">45 min</option>
+            <option value="60" selected>60 min</option>
+            <option value="90">90 min</option>
+            <option value="120">120 min</option>
+          </select>
+          <button type="button" onclick="addNcAvailSlot()" style="background:#27ae60; color:#fff; border:none; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:.8rem;">+ Legg til</button>
+        </div>
+        <p style="font-size:.6rem; color:#94a3b8; margin-top:.4rem;">Legg til dager og tidsrom kunden kan booke. Kan endres senere i selskapsoversikten.</p>
+      </div>
       <button class="btn btn-primary" style="width:100%;" onclick="createCompany()">Opprett selskap</button>
     </div>
   </div>`;
@@ -2443,6 +2468,7 @@ function openNewCompanyModal() {
   updateGreetingPreview();
   updateIndustryPreview();
   updateWorkerLabel();
+  ncAvailSlots = [];
 }
 
 function updateWorkerLabel() {
@@ -2543,6 +2569,37 @@ function toggleNcAutoMessages(checked) {
   }
 }
 
+// Availability slots for new company modal
+let ncAvailSlots = [];
+function addNcAvailSlot() {
+  const dayNames = ['Søndag','Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag'];
+  const day = parseInt(document.getElementById('nc-avail-day').value);
+  const start = document.getElementById('nc-avail-start').value;
+  const end = document.getElementById('nc-avail-end').value;
+  const dur = parseInt(document.getElementById('nc-avail-dur').value);
+  if (!start || !end) return;
+  ncAvailSlots.push({ day_of_week: day, start_time: start, end_time: end, slot_duration: dur });
+  renderNcAvailSlots();
+}
+function removeNcAvailSlot(idx) {
+  ncAvailSlots.splice(idx, 1);
+  renderNcAvailSlots();
+}
+function renderNcAvailSlots() {
+  const dayNames = ['Søndag','Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag'];
+  const container = document.getElementById('nc-avail-list');
+  if (!container) return;
+  if (!ncAvailSlots.length) { container.innerHTML = ''; return; }
+  container.innerHTML = ncAvailSlots.map((s, i) => 
+    '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;margin:2px 0;background:#16a34a22;border:1px solid #22c55e44;border-radius:6px;font-size:13px;color:#e2e8f0;">' +
+    '<span style="font-weight:600;min-width:65px;">' + dayNames[s.day_of_week] + '</span>' +
+    '<span>' + s.start_time + ' – ' + s.end_time + '</span>' +
+    '<span style="color:#94a3b8;font-size:11px;">(' + s.slot_duration + ' min)</span>' +
+    '<button onclick="removeNcAvailSlot(' + i + ')" style="margin-left:auto;background:#e74c3c;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px;">✕</button>' +
+    '</div>'
+  ).join('');
+}
+
 function generatePassword() {
   const words = ['fjord','bjørk','sol','gran','storm','fjell','skog','elv','bris','regn','snø','stein','dal','hav','nord','sør','vind','kveld','morgen','blomst','foss','strand','himmel','lyng','bjørn','ulv','ørn','laks','bre','topp','ild','frost','sky','bekk','eng','ås','myr','bukt','vik','sund','tind','li','haug','mo','vann','berg','kyst','gård','hei','rein'];
   const w1 = words[Math.floor(Math.random()*words.length)];
@@ -2564,28 +2621,40 @@ async function createCompany() {
     boss_email: $('nc-boss-email')?.value || '',
     login_password: $('nc-login-pw').value,
     sms_notify_worker: $('nc-sms-notify')?.checked ?? true,
-    sms_confirm_customer: $('nc-sms-customer')?.checked ?? true,
+    sms_confirm_customer: $('nc-autoconfirm')?.checked ?? true,
     sms_remind_customer: $('nc-sms-reminder')?.checked ?? true,
     sms_extract_employee: $('nc-sms-notify')?.checked ?? true,
     feature_phone: $('nc-feat-phone')?.checked ?? true,
     feature_chatbot: $('nc-feat-chatbot')?.checked ?? true,
     feature_inbound_sms: $('nc-feat-inbound-sms')?.checked ?? true,
     feature_employee_alert: $('nc-sms-notify')?.checked ?? true,
-    feature_auto_confirm: $('nc-feat-auto-confirm')?.checked ?? true,
-    feature_customer_confirm: $('nc-sms-customer')?.checked ?? true,
+    feature_auto_confirm: $('nc-autoconfirm')?.checked ?? true,
+    feature_customer_confirm: $('nc-autoconfirm')?.checked ?? true,
     feature_reminder: $('nc-sms-reminder')?.checked ?? true,
     feature_base44: $('nc-feat-base44')?.checked ?? true,
     feature_auto_messages: $('nc-auto-messages')?.checked ?? true,
     feature_info_in: true,
     feature_info_out: true,
     feature_calendar: true,
-    requires_worker_approval: $('nc-requires-approval')?.checked || false,
+    requires_worker_approval: !($('nc-autoconfirm')?.checked ?? true),
     logo_url: companyLogoData || null,
     greeting
   };
   companyLogoData = null;
   try {
     const resp = await api('/api/companies', { method:'POST', body: JSON.stringify(body) });
+    
+    // Create availability slots if any were added
+    if (ncAvailSlots.length > 0 && resp.id) {
+      try {
+        await fetch('/api/company/' + resp.id + '/availability', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ slots: ncAvailSlots })
+        });
+      } catch(e) { console.warn('Availability setup feilet:', e); }
+    }
+    ncAvailSlots = [];
     
     // Upload logo separat hvis valgt
     if (companyLogoData && resp.id) {
