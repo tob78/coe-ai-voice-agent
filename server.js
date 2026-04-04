@@ -90,7 +90,24 @@ REGLER:
 `;
 }
 
-
+function normalizeDateToISO(dateStr) {
+  if (!dateStr) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  const today = new Date();
+  const str = dateStr.toLowerCase().trim();
+  if (/i\s*(morgen|morra)/.test(str)) {
+    const d = new Date(today); d.setDate(d.getDate()+1);
+    return d.toISOString().split('T')[0];
+  }
+  const months = {'januar':1,'februar':2,'mars':3,'april':4,'mai':5,'juni':6,'juli':7,'august':8,'september':9,'oktober':10,'november':11,'desember':12};
+  const m = str.match(/(\d{1,2})\.?\s*(januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)/);
+  if (m) {
+    let year = today.getFullYear();
+    if (months[m[2]] < today.getMonth()+1) year++;
+    return `${year}-${String(months[m[2]]).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;
+  }
+  return dateStr;
+}
 const app = express();
 app.use(cors());
 app.use(express.json());
