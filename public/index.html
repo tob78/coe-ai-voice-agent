@@ -1693,6 +1693,9 @@ async function toggleMasterFeature(companyId, featureName, btn, groupPrefix) {
       });
     }
     showToast(`${label} er nå ${newVal ? 'PÅ' : 'AV'}`);
+    // Update local data and re-render to get correct colors
+    if (currentCompanyData) currentCompanyData[featureName] = newVal;
+    setTimeout(() => { if (window._currentCompanyDetailId) renderCompanyDetail(window._currentCompanyDetailId); }, 200);
   } catch(e) {
     showToast('❌ Kunne ikke endre feature: ' + e.message);
   }
