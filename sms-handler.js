@@ -3,10 +3,8 @@
 
 const { db, pool } = require('./db');
 
-// Use Restricted API Key if available, fallback to Account SID + Auth Token
-const twilioClient = process.env.TWILIO_API_KEY_SID
-  ? require('twilio')(process.env.TWILIO_API_KEY_SID, process.env.TWILIO_API_KEY_SECRET, { accountSid: process.env.TWILIO_ACCOUNT_SID })
-  : require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+// ALWAYS use Auth Token for SMS — Restricted API Key lacks SMS permission (error 70051)
+const twilioClient = require('twilio')(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 const TWILIO_NUMBER = process.env.TWILIO_PHONE_NUMBER || '+12602612731';
 
 // ===== SEND ERROR ALERT TO BOSS =====
@@ -460,7 +458,7 @@ async function checkAndSendReminders(db) {
   // ===== NEW: Read from BOOKINGS table (primary source of dates) =====
   const bookings = await db.all(`
     SELECT b.id as booking_id, b.preferred_date, b.preferred_time, b.confirmation_status,
-           b.comment, c.id as customer_id, c.name, c.phone, c.reminder_sent,
+           b.notes, c.id as customer_id, c.name, c.phone, c.reminder_sent,
            comp.name as company_name, comp.montour_phone, comp.sms_remind_customer
     FROM bookings b
     JOIN customers c ON b.customer_id = c.id
