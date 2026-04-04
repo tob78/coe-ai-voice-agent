@@ -226,15 +226,13 @@
       flex-direction: column !important; align-items: flex-start !important;
     }
     
-    /* Calendar — kompakt + weekdays left-aligned */
-    .calendar-grid { font-size: 0.7rem !important; }
-    .calendar-grid td { padding: 0.2rem !important; }
-    .calendar-grid th { text-align: left !important; padding-left: .25rem !important; }
-    .cal-day { min-height: 50px !important; }
-    #cal-header { grid-template-columns: repeat(7, 1fr) !important; }
-    #cal-grid { grid-template-columns: repeat(7, 1fr) !important; }
-    #cal-grid .cal-day { padding: .15rem !important; font-size: .65rem !important; min-height: 45px !important; }
-    #cal-grid .cal-pill { font-size: .55rem !important; padding: .1rem .2rem !important; }
+    /* Calendar — mobil listevisning */
+    #cal-header { display: none !important; }
+    #cal-grid .cal-empty { display: none !important; }
+    #cal-grid { grid-template-columns: 1fr !important; gap: 2px !important; }
+    #cal-grid .cal-day { min-height: auto !important; padding: .5rem .75rem !important; font-size: .85rem !important; display: flex !important; align-items: center !important; gap: .5rem !important; flex-wrap: wrap !important; }
+    #cal-grid .cal-day > div:first-child { min-width: 60px !important; margin-bottom: 0 !important; }
+    #cal-grid .cal-pill { font-size: .7rem !important; padding: .2rem .4rem !important; }
     
     /* Modal — full bredde */
     .modal { padding: 1rem !important; width: 98% !important; max-height: 85vh !important; overflow-y: auto !important; font-size: .85rem !important; }
@@ -384,11 +382,7 @@
     <div class="nav-item" data-route="#/auto-rettinger" onclick="navigate('#/auto-rettinger')">🔧 <span>Auto-rettinger</span> <span id="nav-fix-badge" style="display:none; background:#22c55e; color:#fff; font-size:.65rem; font-weight:700; padding:.1rem .4rem; border-radius:99px; margin-left:auto;"></span></div>
     <div class="nav-item" data-route="#/innstillinger" onclick="navigate('#/innstillinger')">⚙️ <span>Innstillinger</span></div>
   </nav>
-  <!-- Oppdater/Logg ut — rett under nav -->
-  <div style="padding:.5rem .75rem; border-top:1px solid var(--border); margin-top:.5rem; display:flex; gap:.5rem;">
-    <button class="btn" style="flex:1; color:var(--text2); background:transparent; font-size:.8rem; padding:.4rem;" onclick="location.reload()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🔄 Oppdater</button>
-    <button class="btn" style="flex:1; color:var(--text2); background:transparent; font-size:.8rem; padding:.4rem;" onclick="doLogout()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🚪 Logg ut</button>
-  </div>
+
   <!-- Sidebar confirmed appointments -->
   <div id="sidebar-confirmed" style="margin-top:.5rem; padding:0 .5rem; border-top:1px solid var(--border); padding-top:.5rem; overflow-y:auto; flex:1; min-height:0;">
     <div style="font-size:.7rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem; padding-left:.5rem;">✅ Bekreftede timer <span id="sidebar-conf-count" style="color:var(--green);"></span></div>
@@ -3751,7 +3745,7 @@ async function loadCalBookings() {
     const today = new Date().toISOString().split('T')[0];
     const dayAbbr = ['Søn', 'Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør'];
     let html = '';
-    for (let i = 0; i < offset; i++) html += '<div class="cal-day" style="background:var(--bg);"></div>';
+    for (let i = 0; i < offset; i++) html += '<div class="cal-day cal-empty" style="background:var(--bg);"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       const isToday = dateStr === today;
