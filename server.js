@@ -618,7 +618,7 @@ app.post('/twilio/voice/respond', async (req, res) => {
     console.log(`📊 STT DEBUG — All Twilio params: ${JSON.stringify(req.body)}`);
 
     // SPEED: Single JOIN query instead of 2 separate queries
-    const sessionRow = await db.get(`SELECT cs.*, co.id as comp_id, co.name as comp_name, co.industry as comp_industry, co.greeting as comp_greeting, co.montour_phone as comp_montour_phone, co.boss_phone as comp_boss_phone, co.phone as comp_phone, co.logo_url as comp_logo_url, co.sms_notify_worker as comp_sms_notify_worker, co.sms_confirm_customer as comp_sms_confirm_customer, co.sms_remind_customer as comp_sms_remind_customer, co.sms_extract_employee as comp_sms_extract_employee, co.system_prompt as comp_system_prompt, co.feature_auto_confirm as comp_feature_auto_confirm, co.feature_employee_alert as comp_feature_employee_alert, co.feature_info_out as comp_feature_info_out FROM call_sessions cs JOIN companies co ON cs.company_id = co.id WHERE cs.id = $1`, sessionId);
+    const sessionRow = await db.get(`SELECT cs.*, co.id as comp_id, co.name as comp_name, co.industry as comp_industry, co.greeting as comp_greeting, co.montour_phone as comp_montour_phone, co.boss_phone as comp_boss_phone, co.phone as comp_phone, co.logo_url as comp_logo_url, co.sms_notify_worker as comp_sms_notify_worker, co.sms_confirm_customer as comp_sms_confirm_customer, co.sms_remind_customer as comp_sms_remind_customer, co.sms_extract_employee as comp_sms_extract_employee, co.system_prompt as comp_system_prompt, co.feature_auto_confirm as comp_feature_auto_confirm, co.feature_employee_alert as comp_feature_employee_alert, co.feature_info_out as comp_feature_info_out, co.address as comp_address FROM call_sessions cs JOIN companies co ON cs.company_id = co.id WHERE cs.id = $1`, sessionId);
     if (!sessionRow) {
       const twiml = new VoiceResponse();
       naturalSay(twiml, 'Beklager, det oppsto en teknisk feil. Kan du prøve å ringe igjen? Ha en fin dag!');
@@ -626,7 +626,7 @@ app.post('/twilio/voice/respond', async (req, res) => {
       return;
     }
     session = sessionRow;
-    company = { id: sessionRow.comp_id, name: sessionRow.comp_name, industry: sessionRow.comp_industry, greeting: sessionRow.comp_greeting, montour_phone: sessionRow.comp_montour_phone, boss_phone: sessionRow.comp_boss_phone, phone: sessionRow.comp_phone, logo_url: sessionRow.comp_logo_url, sms_notify_worker: sessionRow.comp_sms_notify_worker, sms_confirm_customer: sessionRow.comp_sms_confirm_customer, sms_remind_customer: sessionRow.comp_sms_remind_customer, sms_extract_employee: sessionRow.comp_sms_extract_employee, system_prompt: sessionRow.comp_system_prompt, feature_auto_confirm: sessionRow.comp_feature_auto_confirm, feature_employee_alert: sessionRow.comp_feature_employee_alert, feature_info_out: sessionRow.comp_feature_info_out };
+    company = { id: sessionRow.comp_id, name: sessionRow.comp_name, industry: sessionRow.comp_industry, greeting: sessionRow.comp_greeting, montour_phone: sessionRow.comp_montour_phone, boss_phone: sessionRow.comp_boss_phone, phone: sessionRow.comp_phone, logo_url: sessionRow.comp_logo_url, sms_notify_worker: sessionRow.comp_sms_notify_worker, sms_confirm_customer: sessionRow.comp_sms_confirm_customer, sms_remind_customer: sessionRow.comp_sms_remind_customer, sms_extract_employee: sessionRow.comp_sms_extract_employee, system_prompt: sessionRow.comp_system_prompt, feature_auto_confirm: sessionRow.comp_feature_auto_confirm, feature_employee_alert: sessionRow.comp_feature_employee_alert, feature_info_out: sessionRow.comp_feature_info_out, address: sessionRow.comp_address };
 
     const twiml = new VoiceResponse();
 
@@ -810,6 +810,7 @@ app.post('/twilio/voice/respond', async (req, res) => {
                 if (dateText) msg += `\n📅 Dato: ${dateText}`;
                 if (timeText) msg += `\n🕐 Tid: ${timeText}`;
                 if (serviceText) msg += `\n💼 Tjeneste: ${serviceText}`;
+                if (company.address) msg += `\n📍 Adresse: ${company.address}`;
                 msg += `\nVelkommen! 😊`;
                 smsMsg = msg;
               } else {
@@ -1936,7 +1937,7 @@ app.get('/api/companies/:id', async (req, res) => {
 // Create company
 app.post('/api/companies', async (req, res) => {
   try {
-    const { name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, logo_url, requires_worker_approval } = req.body;
+    const { name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, logo_url, requires_worker_approval, address } = req.body;
     
     if (!name || !name.trim()) return res.status(400).json({ error: 'Selskapsnavn er påkrevd' });
     
@@ -1956,8 +1957,8 @@ app.post('/api/companies', async (req, res) => {
     const generated = autoCompany.generateCompanyConfig(name, safeIndustry);
     
     const result = await db.run(
-      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval, feature_auto_messages, feature_info_in, feature_info_out, feature_phone, feature_chatbot, feature_auto_confirm, feature_employee_alert, feature_customer_confirm, feature_reminder, max_concurrent, break_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) RETURNING id`,
+      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval, feature_auto_messages, feature_info_in, feature_info_out, feature_phone, feature_chatbot, feature_auto_confirm, feature_employee_alert, feature_customer_confirm, feature_reminder, max_concurrent, break_minutes, address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30) RETURNING id`,
       name.trim(), safeIndustry, phone || null, autoGreeting, montour_phone || null, autoPassword, boss_phone || null, boss_email || null,
       sms_notify_worker !== false, sms_confirm_customer !== false, sms_remind_customer !== false, sms_extract_employee !== false,
       JSON.stringify(generated.industryQuestions || []),
@@ -1976,7 +1977,8 @@ app.post('/api/companies', async (req, res) => {
       req.body.feature_customer_confirm !== false,
       req.body.feature_reminder !== false,
       Math.max(1, Math.min(10, parseInt(req.body.max_concurrent) || 1)),
-      Math.max(0, Math.min(60, parseInt(req.body.break_minutes) || 0))
+      Math.max(0, Math.min(60, parseInt(req.body.break_minutes) || 0)),
+      address || null
     );
     
     res.json({ 
