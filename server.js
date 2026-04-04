@@ -3235,9 +3235,10 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
       }
     }
     // SMS catch-up hvert 10. minutt
-    setInterval(smsCatchUp, 10 * 60 * 1000);
-    setTimeout(smsCatchUp, 60000); // 1 min etter oppstart
-    console.log('📱 SMS catch-up startet (hvert 10 min)');
+    // ⚠️ SMS catch-up DEAKTIVERT — forårsaket Twilio-suspensjon ved DB-rensing
+    // setInterval(smsCatchUp, 10 * 60 * 1000);
+    // setTimeout(smsCatchUp, 60000);
+    console.log('📱 SMS catch-up DEAKTIVERT (sikkerhetstiltak)');
 
     // Configure Twilio StatusCallback for all phone numbers (catches hangups)
     try {
