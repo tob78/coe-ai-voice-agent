@@ -1078,20 +1078,7 @@ async function renderCompanyDetail(id) {
         <button onclick="document.getElementById('avail-form-${c.id}').style.display='block'" style="background:#3498db;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-top:6px;">+ Legg til dag</button>
       </div>
 
-      <!-- Manual confirmation toggle -->
-      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:8px 0">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#000">
-          <input type="checkbox" ${c.requires_worker_approval ? 'checked' : ''} 
-            onchange="toggleManualConfirm(${c.id}, this.checked)"
-            style="width:18px;height:18px">
-          &#x1f512; Krever manuell bekreftelse
-        </label>
-        <small style="color:#856404;display:block;margin-top:4px">
-          ${c.requires_worker_approval ? 
-            'PÅ — Ansatt MÅ trykke Bekreft-knapp for hver booking' : 
-            'AV — Bookinger bekreftes automatisk med SMS til kunde'}
-        </small>
-      </div>
+
 
       <!-- Feature toggles — INFO INN, INFO UT, Base44 -->
       <div style="display:flex; flex-direction:column; gap:.5rem; margin-bottom:1rem;" id="feat-toggles-${c.id}">
@@ -1116,12 +1103,23 @@ async function renderCompanyDetail(id) {
           </div>
           <div id="info-out-sub-${c.id}" style="display:none; background:#1e293b; border:1px solid #475569; border-radius:.5rem; padding:.5rem; margin-top:.25rem;">
             <div style="font-size:.7rem; color:#64748b; font-weight:600; margin-bottom:.4rem; text-transform:uppercase;">Utgående meldinger</div>
+            <div style="background:${c.requires_worker_approval === false ? '#16a34a15' : '#f59e0b15'}; border:1px solid ${c.requires_worker_approval === false ? '#22c55e' : '#f59e0b'}; border-radius:.5rem; padding:.6rem .75rem; margin-bottom:.5rem;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:.85rem;color:${c.requires_worker_approval === false ? '#22c55e' : '#f59e0b'}">
+                <input type="checkbox" ${c.requires_worker_approval === false ? 'checked' : ''} 
+                  onchange="toggleAutoConfirm(${c.id}, this.checked)"
+                  style="width:18px;height:18px;accent-color:${c.requires_worker_approval === false ? '#22c55e' : '#f59e0b'}">
+                📅 Autobekreftelse ${c.requires_worker_approval === false ? 'PÅ' : 'AV'}
+              </label>
+              <small style="color:#94a3b8;display:block;margin-top:4px;font-size:.65rem;">
+                ${c.requires_worker_approval === false ? 
+                  'KI sjekker kalender → viser ledige tider → booker automatisk → SMS med dato/tid sendes' : 
+                  'KI spør om tidsrom → booking venter → ansatt MÅ bekrefte manuelt'}
+              </small>
+            </div>
             <button onclick="toggleAutoMessages(${c.id},this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.85rem; padding:.6rem .75rem; margin-bottom:.5rem; border-radius:.4rem; font-weight:700; cursor:pointer; border:2px solid ${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'}; background:${c.feature_auto_messages !== false ? '#7c3aed22' : '#ef444422'}; color:${c.feature_auto_messages !== false ? '#a78bfa' : '#ef4444'};" data-feat="feature_auto_messages" data-on="${c.feature_auto_messages !== false}">📨 Automatiske meldinger ${c.feature_auto_messages !== false ? 'PÅ' : 'AV'}</button>
             <p style="font-size:.6rem; color:#94a3b8; margin-bottom:.5rem; padding:0 .75rem;">${c.feature_auto_messages !== false ? 'Alle 4 meldinger sendes automatisk' : 'Hver melding må bekreftes manuelt'}</p>
             <hr style="border:none; border-top:1px solid #334155; margin-bottom:.5rem;">
             <button onclick="toggleFeature(${c.id},'feature_employee_alert',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_employee_alert !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_employee_alert !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_employee_alert" data-on="${c.feature_employee_alert !== false}">📋 Ansattvarsling ${c.feature_employee_alert !== false ? 'PÅ' : 'AV'}</button>
-            <button onclick="toggleFeature(${c.id},'feature_auto_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_auto_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_auto_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_auto_confirm" data-on="${c.feature_auto_confirm !== false}">📨 Auto-bekreftelse ${c.feature_auto_confirm !== false ? 'PÅ' : 'AV'}</button>
-            <button onclick="toggleFeature(${c.id},'feature_customer_confirm',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; margin-bottom:.3rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_customer_confirm !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_customer_confirm !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_customer_confirm" data-on="${c.feature_customer_confirm !== false}">✅ Kundebekreftelse ${c.feature_customer_confirm !== false ? 'PÅ' : 'AV'}</button>
             <button onclick="toggleFeature(${c.id},'feature_reminder',this)" class="sub-toggle-btn" style="display:block; width:100%; text-align:left; font-size:.8rem; padding:.5rem .75rem; border-radius:.4rem; font-weight:600; cursor:pointer; border:1px solid ${c.feature_reminder !== false ? '#22c55e' : '#ef4444'}; background:${c.feature_reminder !== false ? '#16a34a22' : '#ef444422'}; color:${c.feature_reminder !== false ? '#22c55e' : '#ef4444'};" data-feat="feature_reminder" data-on="${c.feature_reminder !== false}">⏰ Påminnelse ${c.feature_reminder !== false ? 'PÅ' : 'AV'}</button>
           </div>
         </div>
@@ -1587,15 +1585,15 @@ function updateBtnVisuals(btn, isOn, label) {
 const FEAT_LABELS = {
   feature_phone: '📞 Telefon', feature_chatbot: '💬 Chatbot',
   feature_inbound_sms: '📥 Kundemeldinger til bedriftsnr.',
-  feature_employee_alert: '📋 Ansattvarsling', feature_auto_confirm: '📨 Auto-bekreftelse',
+  feature_employee_alert: '📋 Ansattvarsling',
   feature_auto_messages: '📨 Automatiske meldinger',
-  feature_customer_confirm: '✅ Kundebekreftelse', feature_reminder: '⏰ Påminnelse',
+  feature_reminder: '⏰ Påminnelse',
   feature_info_in: '📥 INFO INN', feature_info_out: '📤 INFO UT',
-  feature_base44: '🌐 Base44', feature_auto_confirm: '📨 Auto-bekreftelse',
+  feature_base44: '🌐 Base44',
 };
 
 const INFO_IN_SUBS = ['feature_phone','feature_chatbot','feature_inbound_sms'];
-const INFO_OUT_SUBS = ['feature_employee_alert','feature_auto_confirm','feature_customer_confirm','feature_reminder'];
+const INFO_OUT_SUBS = ['feature_employee_alert','feature_reminder'];
 
 async function toggleFeature(companyId, featureName, btn) {
   const isOn = btn.getAttribute('data-on') === 'true';
@@ -1615,13 +1613,23 @@ async function toggleFeature(companyId, featureName, btn) {
   }
 }
 
-async function toggleManualConfirm(companyId, val) {
-  await fetch('/api/companies/' + companyId, {
-    method: 'PATCH',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ requires_worker_approval: val })
-  });
-  renderCompanyDetail(companyId);
+async function toggleAutoConfirm(companyId, autoOn) {
+  try {
+    const res = await fetch('/api/companies/' + companyId, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ requires_worker_approval: !autoOn })
+    });
+    if (!res.ok) throw new Error('Feil ved oppdatering');
+    await fetch('/api/company/' + companyId + '/sync-vapi', { method: 'POST', headers: {'Content-Type':'application/json'} });
+    if (typeof renderCompanyDetail === 'function') {
+      const companies = await (await fetch('/api/companies')).json();
+      const company = companies.find(c => c.id === companyId);
+      if (company) renderCompanyDetail(company);
+    }
+  } catch(e) {
+    alert('Feil: ' + e.message);
+  }
 }
 
 async function toggleAutoMessages(companyId, btn) {
