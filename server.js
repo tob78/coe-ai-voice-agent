@@ -792,20 +792,38 @@ app.post('/twilio/voice/respond', async (req, res) => {
             }
           } catch(e) { console.error('⚠️ Auto-analyse feilet:', e.message); }
 
-          // SMS — uttrekk til ansatt + auto-bekreftelse til kunde
+          // SMS — uttrekk til ansatt
           await sendToMontour(customer, company);
 
-          // Auto-bekreftelse: "Vi kommer tilbake TIL DEG" til kunde — KUN når manuell bekreftelse PÅ
-          if (company.feature_auto_confirm !== false && company.requires_worker_approval === true && customer?.phone) {
+          // SMS til kunde etter samtale
+          if (customer?.phone) {
             try {
               const { sendSms } = require('./sms-handler');
-              const autoMsg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Takk for samtalen med ${company.name}. Vi kommer tilbake TIL DEG med bekreftelse. Ha en fin dag! 😊`;
-              const smsRes = await sendSms(customer.phone, autoMsg);
-              if (smsRes?.sid) {
-                await db.query(`INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, 'customer', $2, $3, 'auto_confirm', $4, 'sent', NOW())`, [customer.id, customer.phone, autoMsg, smsRes.sid]);
-                console.log(`📨 Auto-bekreftelse sendt til ${customer.phone}`);
+              let smsMsg;
+              
+              if (company.requires_worker_approval === false) {
+                // Autobekreftelse PÅ → bekreftelse-SMS med dato/tid/tjeneste
+                const dateText = customer.preferred_date || data.dato || '';
+                const timeText = customer.preferred_time || data.klokkeslett || '';
+                const serviceText = customer.service_requested || data.tjeneste || '';
+                let msg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Din bestilling hos ${company.name} er bekreftet.`;
+                if (dateText) msg += `\n📅 Dato: ${dateText}`;
+                if (timeText) msg += `\n🕐 Tid: ${timeText}`;
+                if (serviceText) msg += `\n💼 Tjeneste: ${serviceText}`;
+                msg += `\nVelkommen! 😊`;
+                smsMsg = msg;
+              } else {
+                // Manuell bekreftelse → "Vi kommer tilbake TIL DEG"
+                smsMsg = `Hei${customer.name ? ' ' + customer.name.split(' ')[0] : ''}! Takk for samtalen med ${company.name}. Vi kommer tilbake TIL DEG med bekreftelse. Ha en fin dag! 😊`;
               }
-            } catch(e) { console.error('⚠️ Auto-bekreftelse SMS feilet:', e.message); }
+              
+              const smsRes = await sendSms(customer.phone, smsMsg);
+              if (smsRes?.sid) {
+                const msgType = company.requires_worker_approval === false ? 'booking_confirmation' : 'auto_confirm';
+                await db.query(`INSERT INTO messages (customer_id, recipient_type, recipient_phone, message_body, message_type, twilio_sid, status, created_at) VALUES ($1, 'customer', $2, $3, $4, $5, 'sent', NOW())`, [customer.id, customer.phone, smsMsg, msgType, smsRes.sid]);
+                console.log(`📨 ${msgType} SMS sendt til ${customer.phone}`);
+              }
+            } catch(e) { console.error('⚠️ Kunde-SMS feilet:', e.message); }
           }
           // Uttrekk-SMS: AI-oppsummering av samtalen til montør/eier
           if (fullTranscript && company.sms_extract_employee !== false) {
@@ -1938,8 +1956,8 @@ app.post('/api/companies', async (req, res) => {
     const generated = autoCompany.generateCompanyConfig(name, safeIndustry);
     
     const result = await db.run(
-      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval, feature_auto_messages, feature_info_in, feature_info_out, feature_phone, feature_chatbot, feature_auto_confirm, feature_employee_alert, feature_customer_confirm, feature_reminder)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27) RETURNING id`,
+      `INSERT INTO companies (name, industry, phone, greeting, montour_phone, login_password, boss_phone, boss_email, sms_notify_worker, sms_confirm_customer, sms_remind_customer, sms_extract_employee, industry_questions, follow_up_triggers, standard_routines, sms_template, logo_url, requires_worker_approval, feature_auto_messages, feature_info_in, feature_info_out, feature_phone, feature_chatbot, feature_auto_confirm, feature_employee_alert, feature_customer_confirm, feature_reminder, max_concurrent, break_minutes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) RETURNING id`,
       name.trim(), safeIndustry, phone || null, autoGreeting, montour_phone || null, autoPassword, boss_phone || null, boss_email || null,
       sms_notify_worker !== false, sms_confirm_customer !== false, sms_remind_customer !== false, sms_extract_employee !== false,
       JSON.stringify(generated.industryQuestions || []),
@@ -1956,7 +1974,9 @@ app.post('/api/companies', async (req, res) => {
       req.body.feature_auto_confirm !== false,
       req.body.feature_employee_alert !== false,
       req.body.feature_customer_confirm !== false,
-      req.body.feature_reminder !== false
+      req.body.feature_reminder !== false,
+      Math.max(1, Math.min(10, parseInt(req.body.max_concurrent) || 1)),
+      Math.max(0, Math.min(60, parseInt(req.body.break_minutes) || 0))
     );
     
     res.json({ 
