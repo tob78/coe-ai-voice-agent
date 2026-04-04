@@ -1,4 +1,4 @@
-// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.64 — OpenAI Realtime) =====
+// ===== COE AI VOICE ASSISTANT - MAIN SERVER (v3.9.70 — OpenAI Realtime) =====
 // Express server with Twilio webhooks for voice and SMS
 
 require('dotenv').config();
@@ -90,24 +90,7 @@ REGLER:
 `;
 }
 
-function normalizeDateToISO(dateStr) {
-  if (!dateStr) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  const today = new Date();
-  const str = dateStr.toLowerCase().trim();
-  if (/i\s*(morgen|morra)/.test(str)) {
-    const d = new Date(today); d.setDate(d.getDate()+1);
-    return d.toISOString().split('T')[0];
-  }
-  const months = {'januar':1,'februar':2,'mars':3,'april':4,'mai':5,'juni':6,'juli':7,'august':8,'september':9,'oktober':10,'november':11,'desember':12};
-  const m = str.match(/(\d{1,2})\.?\s*(januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)/);
-  if (m) {
-    let year = today.getFullYear();
-    if (months[m[2]] < today.getMonth()+1) year++;
-    return `${year}-${String(months[m[2]]).padStart(2,'0')}-${String(parseInt(m[1])).padStart(2,'0')}`;
-  }
-  return dateStr;
-}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -1434,6 +1417,57 @@ app.delete('/api/customers/:id/exclude-date', async (req, res) => {
   await db.run('UPDATE customers SET excluded_dates = $1, updated_at = NOW() WHERE id = $2',
     JSON.stringify(excluded), req.params.id);
   res.json({ success: true, excluded });
+});
+
+// ===== COMPANY AVAILABILITY / TIDSLUKE MANAGEMENT =====
+
+// Get availability for a company
+app.get('/api/company/:id/availability', async (req, res) => {
+  try {
+    const slots = await db.all(
+      `SELECT * FROM availability WHERE company_id = $1 ORDER BY day_of_week, start_time`,
+      req.params.id
+    );
+    res.json(slots);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Set availability for a company (bulk replace)
+app.post('/api/company/:id/availability', async (req, res) => {
+  try {
+    const { slots } = req.body; // array of { day_of_week, start_time, end_time, slot_duration }
+    const companyId = req.params.id;
+    
+    // Delete existing and insert new
+    await db.run('DELETE FROM availability WHERE company_id = $1', companyId);
+    
+    for (const slot of slots) {
+      await db.run(
+        `INSERT INTO availability (company_id, day_of_week, start_time, end_time, slot_duration) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        companyId, slot.day_of_week, slot.start_time, slot.end_time, slot.slot_duration || 60
+      );
+    }
+    
+    res.json({ success: true, count: slots.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Toggle a single availability slot active/inactive
+app.put('/api/availability/:id/toggle', async (req, res) => {
+  try {
+    await db.run('UPDATE availability SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1', req.params.id);
+    const slot = await db.get('SELECT * FROM availability WHERE id = $1', req.params.id);
+    res.json(slot);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Delete a single availability slot
+app.delete('/api/availability/:id', async (req, res) => {
+  try {
+    await db.run('DELETE FROM availability WHERE id = $1', req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // Avbestill en bestilling
@@ -2867,13 +2901,26 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
           // Opprett booking for denne samtalen (1 booking per samtale)
           if (customerId) {
             const commentParts = [extractedInfo.comment, extractedInfo.alternative_dates ? `Alt. datoer: ${extractedInfo.alternative_dates}` : null, extractedInfo.befaring ? 'Befaring ønsket' : null, extractedInfo.preferred_employee ? `Ønsket ansatt: ${extractedInfo.preferred_employee}` : null, extractedInfo.samtale_avbrutt ? '⚠️ Samtale avbrutt' : null].filter(Boolean).join('. ') || null;
+            
+            // Calculate end_time from preferred_time + duration
+            let bookingEndTime = null;
+            if (extractedInfo.preferred_time) {
+              const timeParts = extractedInfo.preferred_time.replace('.', ':').split(':');
+              const startMins = parseInt(timeParts[0]) * 60 + (parseInt(timeParts[1]) || 0);
+              const endMins = startMins + 60; // default 60 min
+              const endH = Math.floor(endMins / 60);
+              const endM = endMins % 60;
+              bookingEndTime = `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
+            }
+            
             await db.query(
-              `INSERT INTO bookings (customer_id, company_id, call_id, service_requested, preferred_date, preferred_time, preferred_employee, comment, source, status, confirmation_status)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Telefon', $9, $10)`,
+              `INSERT INTO bookings (customer_id, company_id, call_id, service_requested, preferred_date, preferred_time, preferred_employee, comment, source, status, confirmation_status, duration_minutes, end_time)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Telefon', $9, $10, 60, $11)`,
               [customerId, companyId, callId, extractedInfo.service_requested || null, extractedInfo.preferred_date || null,
                extractedInfo.preferred_time || null, extractedInfo.preferred_employee || null, commentParts,
                isBooking ? 'Ny' : 'Henvendelse',
-               companyResult.rows[0]?.requires_worker_approval === false ? 'confirmed' : 'pending']
+               companyResult.rows[0]?.requires_worker_approval === false ? 'confirmed' : 'pending',
+               bookingEndTime]
             );
             console.log(`📋 Recovery: Booking opprettet for call ${callId} — ${extractedInfo.service_requested || 'ukjent tjeneste'}`);
           
@@ -3310,8 +3357,66 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
   async function handleCheckAvailability(companyId, dateStr) {
     try {
       const targetDate = dateStr || new Date().toISOString().split('T')[0];
+      
+      // Parse target date to get day of week
+      const dateObj = new Date(targetDate + 'T12:00:00');
+      const dayOfWeek = dateObj.getDay(); // 0=sunday
+      const dayNames = ['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
+      
+      // 1. Get availability slots for this company on this day
+      const availSlots = await db.all(
+        `SELECT start_time, end_time, slot_duration FROM availability 
+         WHERE company_id = $1 AND day_of_week = $2 AND is_active = true`,
+        companyId, dayOfWeek
+      );
+      
+      // If no availability defined for this day, the company is closed
+      if (!availSlots.length) {
+        // Check next 7 days for available days
+        const nextAvail = await db.all(
+          `SELECT DISTINCT day_of_week FROM availability 
+           WHERE company_id = $1 AND is_active = true ORDER BY day_of_week`,
+          companyId
+        );
+        
+        if (!nextAvail.length) {
+          return JSON.stringify({
+            available: false,
+            date: targetDate,
+            message: 'Ingen ledige tider er satt opp ennå. Be kunden ringe tilbake eller kontakte oss direkte.'
+          });
+        }
+        
+        const availDays = nextAvail.map(a => dayNames[a.day_of_week]).join(', ');
+        return JSON.stringify({
+          available: false,
+          date: targetDate,
+          day_name: dayNames[dayOfWeek],
+          message: `Vi har dessverre ikke åpent på ${dayNames[dayOfWeek]}er. Vi er tilgjengelige på: ${availDays}.`
+        });
+      }
+      
+      // 2. Generate all possible time slots from availability
+      const allSlots = [];
+      for (const avail of availSlots) {
+        const startParts = avail.start_time.split(':');
+        const endParts = avail.end_time.split(':');
+        const startMin = parseInt(startParts[0]) * 60 + parseInt(startParts[1]);
+        const endMin = parseInt(endParts[0]) * 60 + parseInt(endParts[1]);
+        const duration = avail.slot_duration || 60;
+        
+        for (let t = startMin; t + duration <= endMin; t += duration) {
+          const hours = Math.floor(t / 60);
+          const mins = t % 60;
+          const slotStr = `${String(hours).padStart(2,'0')}${String(mins).padStart(2,'0')}`;
+          const displayStr = mins === 0 ? `${hours}` : `${hours}.${String(mins).padStart(2,'0')}`;
+          allSlots.push({ time: slotStr, display: displayStr, minutes: t });
+        }
+      }
+      
+      // 3. Get existing bookings for this date
       const bookings = await db.all(
-        `SELECT b.preferred_date, b.preferred_time, b.service_requested, c.name 
+        `SELECT b.preferred_time, b.duration_minutes, b.service_requested, c.name 
          FROM bookings b LEFT JOIN customers c ON b.customer_id = c.id 
          WHERE b.company_id = $1 AND b.preferred_date = $2::text 
          AND b.status NOT IN ('Avbestilt','Avslått/nei','Lagt på') 
@@ -3320,36 +3425,73 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
         companyId, targetDate
       );
       
-      // Also check surrounding days for alternatives
-      const weekBookings = await db.all(
-        `SELECT preferred_date, preferred_time 
-         FROM bookings 
-         WHERE company_id = $1 AND preferred_date >= $2::text AND preferred_date <= ($2::date + interval '7 days')::text
-         AND status NOT IN ('Avbestilt','Avslått/nei','Lagt på') AND cancelled = 0
-         ORDER BY preferred_date, preferred_time`,
-        companyId, targetDate
-      );
+      // 4. Remove booked slots (including duration blocking)
+      const bookedMinutes = new Set();
+      for (const booking of bookings) {
+        if (booking.preferred_time) {
+          const timeParts = booking.preferred_time.replace('.', ':').split(':');
+          const bookStart = parseInt(timeParts[0]) * 60 + (parseInt(timeParts[1]) || 0);
+          const bookDuration = booking.duration_minutes || 60;
+          // Block the entire duration
+          for (let m = bookStart; m < bookStart + bookDuration; m++) {
+            bookedMinutes.add(m);
+          }
+        }
+      }
       
-      if (!bookings.length) {
-        return JSON.stringify({ 
-          available: true, 
+      // Filter out slots where any minute in the slot duration is booked
+      const defaultDuration = availSlots[0]?.slot_duration || 60;
+      const freeSlots = allSlots.filter(slot => {
+        for (let m = slot.minutes; m < slot.minutes + defaultDuration; m++) {
+          if (bookedMinutes.has(m)) return false;
+        }
+        return true;
+      });
+      
+      // 5. Build response
+      if (freeSlots.length === 0) {
+        // Check next 7 days for availability
+        const nextDays = [];
+        for (let i = 1; i <= 7; i++) {
+          const nextDate = new Date(dateObj);
+          nextDate.setDate(nextDate.getDate() + i);
+          const nextDow = nextDate.getDay();
+          const hasAvail = await db.get(
+            `SELECT 1 FROM availability WHERE company_id = $1 AND day_of_week = $2 AND is_active = true LIMIT 1`,
+            companyId, nextDow
+          );
+          if (hasAvail) {
+            const nextDateStr = nextDate.toISOString().split('T')[0];
+            nextDays.push(`${dayNames[nextDow]} ${nextDate.getDate()}.`);
+            if (nextDays.length >= 3) break;
+          }
+        }
+        
+        return JSON.stringify({
+          available: false,
           date: targetDate,
-          message: `${targetDate} er helt ledig! Ingen bookinger denne dagen.`,
-          week_load: weekBookings.length > 0 ? `${weekBookings.length} andre bookinger denne uken` : 'Hele uken er rolig'
+          day_name: dayNames[dayOfWeek],
+          booked_count: bookings.length,
+          message: `${dayNames[dayOfWeek]} ${targetDate} er dessverre fullbooket.${nextDays.length ? ` Nærmeste ledige dager: ${nextDays.join(', ')}.` : ''}`
         });
       }
       
-      const bookedSlots = bookings.map(b => b.preferred_time || 'hele dagen').join(', ');
-      const names = bookings.map(b => b.preferred_time ? `kl ${b.preferred_time}` : 'heldags').join(', ');
+      const freeList = freeSlots.map(s => `kl ${s.display}`).join(', ');
       
-      return JSON.stringify({ 
-        available: false, 
+      return JSON.stringify({
+        available: true,
         date: targetDate,
-        booked_times: bookedSlots,
-        booking_count: bookings.length,
-        message: `${targetDate} har ${bookings.length} booking(er): ${names}. Andre tidspunkt kan være ledig — spør kunden om alternativ tid.`
+        day_name: dayNames[dayOfWeek],
+        free_slots: freeSlots.map(s => s.display),
+        free_count: freeSlots.length,
+        booked_count: bookings.length,
+        message: `${dayNames[dayOfWeek]} ${targetDate} har vi ledig: ${freeList}. Hvilket klokkeslett passer best?`
       });
-    } catch(e) { return JSON.stringify({ error: e.message }); }
+      
+    } catch(e) { 
+      console.error('check_availability error:', e);
+      return JSON.stringify({ error: e.message }); 
+    }
   }
 
   // ===== GET PRICE ESTIMATE — AI function call =====

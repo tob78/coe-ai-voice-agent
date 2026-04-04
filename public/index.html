@@ -1046,6 +1046,38 @@ async function renderCompanyDetail(id) {
         <div class="stat-card" style="padding:1rem;"><span style="color:var(--text3);">Sjefens epost:</span> <strong>${c.boss_email||'–'}</strong></div>
       </div>` : ''}
 
+      <!-- Availability / Tidsluke section -->
+      <div style="background:#0f2a4a;border:1px solid #1a5276;border-radius:10px;padding:15px;margin:12px 0;">
+        <h4 style="margin:0 0 10px 0;color:#60a5fa;">📅 Ledige tider (tidsluke-oppsett)</h4>
+        <div id="avail-list-${c.id}" style="margin-bottom:10px;"></div>
+        <div id="avail-form-${c.id}" style="display:none;background:#1e293b;padding:10px;border-radius:8px;margin-top:8px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <select id="avail-day-${c.id}" style="padding:6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;">
+              <option value="1">Mandag</option>
+              <option value="2">Tirsdag</option>
+              <option value="3">Onsdag</option>
+              <option value="4">Torsdag</option>
+              <option value="5">Fredag</option>
+              <option value="6">Lørdag</option>
+              <option value="0">Søndag</option>
+            </select>
+            <input type="time" id="avail-start-${c.id}" value="09:00" style="padding:6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;">
+            <span style="color:#94a3b8;">–</span>
+            <input type="time" id="avail-end-${c.id}" value="17:00" style="padding:6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;">
+            <select id="avail-dur-${c.id}" style="padding:6px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#e2e8f0;">
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60" selected>60 min</option>
+              <option value="90">90 min</option>
+              <option value="120">120 min</option>
+            </select>
+            <button onclick="saveCompanyAvailSlot(${c.id})" style="background:#27ae60;color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">Lagre</button>
+            <button onclick="document.getElementById('avail-form-${c.id}').style.display='none'" style="background:#475569;color:#e2e8f0;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;">Avbryt</button>
+          </div>
+        </div>
+        <button onclick="document.getElementById('avail-form-${c.id}').style.display='block'" style="background:#3498db;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;margin-top:6px;">+ Legg til dag</button>
+      </div>
+
       <!-- Manual confirmation toggle -->
       <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin:8px 0">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#000">
@@ -1186,6 +1218,9 @@ async function renderCompanyDetail(id) {
 
     // Load completed customers
     loadCompletedCustomers(customers);
+
+    // Load company availability slots
+    loadCompanyAvailability(id);
 
     // Load AI auto-learning improvements
     loadCompanyImprovements(id);
@@ -3212,6 +3247,79 @@ function timeDropdownOptions(selectedTime) {
     }
   }
   return opts;
+}
+
+// ===== COMPANY AVAILABILITY (TIDSLUKE) FUNCTIONS =====
+async function loadCompanyAvailability(companyId) {
+  try {
+    const res = await fetch(`/api/company/${companyId}/availability`);
+    const slots = await res.json();
+    const dayNamesNo = ['Søndag','Mandag','Tirsdag','Onsdag','Torsdag','Fredag','Lørdag'];
+    const container = document.getElementById(`avail-list-${companyId}`);
+    if (!container) return;
+    
+    if (!slots.length) {
+      container.innerHTML = '<p style="color:#94a3b8;font-size:13px;">Ingen ledige tider satt opp. Legg til dager med knappen under.</p>';
+      return;
+    }
+    
+    container.innerHTML = slots.map(s => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin:3px 0;background:${s.is_active ? '#16a34a22' : '#1e293b'};border:1px solid ${s.is_active ? '#22c55e44' : '#475569'};border-radius:6px;font-size:14px;color:#e2e8f0;">
+        <span style="font-weight:600;min-width:70px;">${dayNamesNo[s.day_of_week]}</span>
+        <span>${s.start_time.substring(0,5)} – ${s.end_time.substring(0,5)}</span>
+        <span style="color:#94a3b8;font-size:12px;">(${s.slot_duration} min)</span>
+        <span style="margin-left:auto;display:flex;gap:4px;">
+          <button onclick="toggleCompanyAvailSlot(${s.id}, ${companyId})" style="background:${s.is_active ? '#f39c12' : '#27ae60'};color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:12px;">${s.is_active ? 'Pause' : 'Aktiver'}</button>
+          <button onclick="deleteCompanyAvailSlot(${s.id}, ${companyId})" style="background:#e74c3c;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:12px;">✕</button>
+        </span>
+      </div>
+    `).join('');
+  } catch(e) { console.error('loadCompanyAvailability error:', e); }
+}
+
+async function saveCompanyAvailSlot(companyId) {
+  const day = document.getElementById(`avail-day-${companyId}`).value;
+  const start = document.getElementById(`avail-start-${companyId}`).value;
+  const end = document.getElementById(`avail-end-${companyId}`).value;
+  const dur = document.getElementById(`avail-dur-${companyId}`).value;
+  
+  // Get existing slots and add new one
+  const existRes = await fetch(`/api/company/${companyId}/availability`);
+  const existing = await existRes.json();
+  
+  const slots = existing.map(s => ({
+    day_of_week: s.day_of_week,
+    start_time: s.start_time.substring(0,5),
+    end_time: s.end_time.substring(0,5),
+    slot_duration: s.slot_duration
+  }));
+  
+  slots.push({
+    day_of_week: parseInt(day),
+    start_time: start,
+    end_time: end,
+    slot_duration: parseInt(dur)
+  });
+  
+  await fetch(`/api/company/${companyId}/availability`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ slots })
+  });
+  
+  document.getElementById(`avail-form-${companyId}`).style.display = 'none';
+  loadCompanyAvailability(companyId);
+}
+
+async function toggleCompanyAvailSlot(slotId, companyId) {
+  await fetch(`/api/availability/${slotId}/toggle`, { method: 'PUT' });
+  loadCompanyAvailability(companyId);
+}
+
+async function deleteCompanyAvailSlot(slotId, companyId) {
+  if (!confirm('Slett denne tidsluken?')) return;
+  await fetch(`/api/availability/${slotId}`, { method: 'DELETE' });
+  loadCompanyAvailability(companyId);
 }
 
 async function loadAvailability(customerId, customer) {
