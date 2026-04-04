@@ -2012,6 +2012,31 @@ function openNewCustomerModal(companyId, industry) {
 
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Beskrivelse</label><textarea id="nc-comment" rows="2" placeholder="Tilleggsinformasjon..."></textarea></div>
 
+      <div style="border-top:1px solid var(--border); padding-top:.75rem; margin-top:.25rem;">
+        <label style="font-size:.875rem; font-weight:600; color:var(--text2); margin-bottom:.5rem; display:block;">⏱️ Tidsluke-oppsett</label>
+        <div style="display:flex; gap:.75rem; flex-wrap:wrap;">
+          <div style="flex:1; min-width:120px;">
+            <label style="font-size:.75rem; color:var(--text3);">Varighet (min)</label>
+            <select id="nc-duration">
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60" selected>60 min</option>
+              <option value="90">90 min</option>
+              <option value="120">120 min</option>
+              <option value="180">180 min</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:120px;">
+            <label style="font-size:.75rem; color:var(--text3);">Maks kunder samtid</label>
+            <input id="nc-max-concurrent" type="number" min="1" max="10" value="1" style="max-width:100px;">
+          </div>
+          <div style="flex:1; min-width:120px;">
+            <label style="font-size:.75rem; color:var(--text3);">Pause etter (min)</label>
+            <input id="nc-break" type="number" min="0" max="60" value="0" style="max-width:100px;">
+          </div>
+        </div>
+      </div>
+
       <div><label style="font-size:.875rem; font-weight:500; color:var(--text2);">Status</label>
         <select id="nc-status">
           <option value="Ny">Ny</option>
@@ -2025,6 +2050,25 @@ function openNewCustomerModal(companyId, industry) {
     </div>
   </div>`;
   document.body.appendChild(overlay);
+
+  // Load company defaults for tidsluke-oppsett
+  const cid = companyId || currentCompanyId;
+  if (cid) {
+    try {
+      const comp = await api(`/api/companies/${cid}`);
+      if (comp.max_concurrent) $('nc-max-concurrent').value = comp.max_concurrent;
+      if (comp.break_minutes) $('nc-break').value = comp.break_minutes;
+      // Load slot_duration from availability
+      const avail = await api(`/api/company/${cid}/availability`);
+      if (avail?.length > 0) {
+        const dur = avail[0].slot_duration_minutes || avail[0].slot_duration;
+        if (dur) {
+          const opt = $('nc-duration').querySelector(`option[value="${dur}"]`);
+          if (opt) opt.selected = true;
+        }
+      }
+    } catch(e) {}
+  }
 
   // If admin with no companyId, load companies dropdown
   if (isAdmin && !companyId) {
@@ -2215,7 +2259,10 @@ async function createCustomer() {
     excluded_dates: excludedDates,
     service_requested: ($('nc-service')?.value === 'Annet' ? ($('nc-service-custom')?.value || 'Annet') : $('nc-service')?.value) || '',
     comment: $('nc-comment')?.value || '',
-    status: $('nc-status')?.value || 'Ny'
+    status: $('nc-status')?.value || 'Ny',
+    duration_minutes: parseInt($('nc-duration')?.value || '60'),
+    max_concurrent: parseInt($('nc-max-concurrent')?.value || '1'),
+    break_minutes: parseInt($('nc-break')?.value || '0')
   };
 
   try {

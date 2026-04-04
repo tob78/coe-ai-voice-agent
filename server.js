@@ -1180,11 +1180,32 @@ app.patch('/api/customers/:id', async (req, res) => {
 
 // Create customer
 app.post('/api/customers', async (req, res) => {
-  const { company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json, excluded_dates, status, source } = req.body;
+  const { company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json, excluded_dates, status, source, duration_minutes, max_concurrent, break_minutes } = req.body;
   const result = await db.run(`INSERT INTO customers (company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json, excluded_dates, status, source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
     company_id, name, phone, address, email, preferred_date, service_requested, comment, postal_code, preferred_time, preferred_date_end, availability_type, availability_json || null, excluded_dates || null, status || 'Ny', source || 'Manuell');
   
   const customerId = result.rows[0].id;
+
+  // Create booking record for calendar visibility
+  if (preferred_date) {
+    try {
+      const dur = parseInt(duration_minutes) || 60;
+      // Calculate end_time if preferred_time given
+      let endTime = null;
+      if (preferred_time) {
+        const startStr = preferred_time.split(' - ')[0].trim();
+        const [h, m] = startStr.split(':').map(Number);
+        if (!isNaN(h)) {
+          const endMin = h * 60 + (m || 0) + dur;
+          endTime = `${String(Math.floor(endMin/60)).padStart(2,'0')}:${String(endMin%60).padStart(2,'0')}`;
+        }
+      }
+      await db.run(
+        `INSERT INTO bookings (customer_id, company_id, service_requested, preferred_date, preferred_time, comment, source, status, confirmation_status, duration_minutes, end_time) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'confirmed',$9,$10)`,
+        customerId, company_id, service_requested, preferred_date, preferred_time, comment, source || 'Manuell', status || 'Ny', dur, endTime
+      );
+    } catch(bErr) { console.error('[BOOKING CREATE] Error:', bErr.message); }
+  }
 
   // SMS cascade — depends on whether company requires worker approval
   try {
