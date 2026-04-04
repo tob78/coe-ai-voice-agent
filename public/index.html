@@ -380,17 +380,19 @@
     <div class="nav-item" data-route="#/auto-rettinger" onclick="navigate('#/auto-rettinger')">🔧 <span>Auto-rettinger</span> <span id="nav-fix-badge" style="display:none; background:#22c55e; color:#fff; font-size:.65rem; font-weight:700; padding:.1rem .4rem; border-radius:99px; margin-left:auto;"></span></div>
     <div class="nav-item" data-route="#/innstillinger" onclick="navigate('#/innstillinger')">⚙️ <span>Innstillinger</span></div>
   </nav>
+  <!-- Oppdater/Logg ut — rett under nav -->
+  <div style="padding:.5rem .75rem; border-top:1px solid var(--border); margin-top:.5rem; display:flex; gap:.5rem;">
+    <button class="btn" style="flex:1; color:var(--text2); background:transparent; font-size:.8rem; padding:.4rem;" onclick="location.reload()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🔄 Oppdater</button>
+    <button class="btn" style="flex:1; color:var(--text2); background:transparent; font-size:.8rem; padding:.4rem;" onclick="doLogout()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🚪 Logg ut</button>
+  </div>
   <!-- Sidebar confirmed appointments -->
   <div id="sidebar-confirmed" style="margin-top:.5rem; padding:0 .5rem; border-top:1px solid var(--border); padding-top:.5rem; overflow-y:auto; flex:1; min-height:0;">
     <div style="font-size:.7rem; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem; padding-left:.5rem;">✅ Bekreftede timer <span id="sidebar-conf-count" style="color:var(--green);"></span></div>
     <div id="sidebar-conf-list"></div>
   </div>
   <!-- Company list removed from sidebar — use Selskaper page instead -->
-  <div style="margin-top:auto; padding:.75rem; border-top:1px solid var(--border); flex-shrink:0;">
-    <div style="color:var(--text3); font-size:.75rem; margin-bottom:.5rem; text-align:center;" id="sidebar-user"></div>
-
-    <button class="btn" style="width:100%; color:var(--text2); background:transparent; font-size:.875rem; margin-bottom:.5rem;" onclick="location.reload()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🔄 Oppdater</button>
-    <button class="btn" style="width:100%; color:var(--text2); background:transparent; font-size:.875rem;" onclick="doLogout()" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='transparent'">🚪 Logg ut</button>
+  <div style="margin-top:auto; padding:.5rem .75rem; border-top:1px solid var(--border); flex-shrink:0;">
+    <div style="color:var(--text3); font-size:.7rem; text-align:center;" id="sidebar-user"></div>
   </div>
 </aside>
 
