@@ -9,10 +9,15 @@ const RAILWAY_URL = 'https://backend-production-6779.up.railway.app';
 
 // Gmail SMTP transporter
 const emailTransporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000,
   auth: {
     user: ADMIN_EMAIL,
-    pass: process.env.GMAIL_APP_PASSWORD || 'ytqu iher ohwg yazv'
+    pass: (process.env.GMAIL_APP_PASSWORD || 'ytquiherowhgyazv').replace(/\s/g, '')
   }
 });
 
@@ -574,14 +579,22 @@ function startScheduler() {
 
 // ============ API ROUTES ============
 function registerRoutes(app) {
-  // Full daily report — also sends email
+  // Full daily report — sends email in background, returns data immediately
   app.get('/api/monitoring/daily-report', async (req, res) => {
     try {
-      const report = await sendDailyEmail();
+      const report = await buildDailyEmail();
+      // Send email in background (don't block response)
+      sendDailyEmail().catch(err => console.error('[MONITOR] Background email error:', err.message));
       res.json({ 
-        message: 'Rapport sendt til e-post',
-        summary: lastDailyReport,
-        warnings: report?.warnings || []
+        message: 'Rapport generert — e-post sendes i bakgrunnen',
+        summary: {
+          calls: report.calls.today,
+          sms: report.sms.today,
+          bookings: report.bookings.today,
+          warnings: report.warnings
+        },
+        system: report.health,
+        costs: report.costs
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
