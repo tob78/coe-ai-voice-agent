@@ -1212,8 +1212,13 @@ async function renderCompanyDetail(id) {
     window._currentCompanyDetailId = id;
     renderCompanyCustomerTable(customers);
 
-    // Load pending approvals — ALLTID vist
-    loadPendingApprovals(id, c.industry);
+    // Load pending approvals — KUN vis ved manuell bekreftelse (requires_worker_approval = true)
+    if (c.requires_worker_approval !== false) {
+      loadPendingApprovals(id, c.industry);
+    } else {
+      const pendEl = $('cd-pending');
+      if (pendEl) pendEl.innerHTML = '';
+    }
 
     // Load upcoming appointments (Kommende timer — #2 rett etter pending)
     loadUpcomingAppointments(id, c.industry, customers);
@@ -3848,7 +3853,7 @@ function showCalDay(dateStr) {
               </div>
             </div>
             <div id="${bubbleId}" style="display:none; padding:.5rem .75rem; border-top:1px solid var(--border); background:var(--bg); font-size:.8rem;">
-              ${b.phone?`<div style="margin-bottom:.25rem;">📞 ${b.phone}</div>`:''}
+              ${b.phone?`<div style="margin-bottom:.25rem;">📞 <a href="tel:${b.phone}" style="color:var(--accent);text-decoration:underline;" onclick="event.stopPropagation()">${b.phone}</a></div>`:''}
               ${b.address?`<div style="margin-bottom:.25rem;">📍 ${b.address}</div>`:''}
               ${b.service_requested?`<div style="margin-bottom:.25rem;">🔧 ${b.service_requested}</div>`:''}
               ${(b.comment||b.notes)?`<div style="margin-bottom:.25rem;">📝 ${b.comment||b.notes}</div>`:''}
