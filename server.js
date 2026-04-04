@@ -1363,6 +1363,26 @@ app.post('/api/bookings/:id/confirm', async (req, res) => {
   }
 });
 
+// ===== BOOKING: ASSIGN EMPLOYEE =====
+// Calendar uses customers table, so update assigned_to there
+app.patch('/api/bookings/:id/assign', async (req, res) => {
+  try {
+    const { assigned_to } = req.body;
+    await db.run('UPDATE customers SET assigned_to = $1 WHERE id = $2', assigned_to || null, req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== COMPANY: MAX CONCURRENT BOOKINGS =====
+app.patch('/api/companies/:id/max-concurrent', async (req, res) => {
+  try {
+    const { max_concurrent_bookings } = req.body;
+    const val = Math.max(1, Math.min(20, parseInt(max_concurrent_bookings) || 5));
+    await pool.query('UPDATE companies SET max_concurrent_bookings = $1 WHERE id = $2', [val, req.params.id]);
+    res.json({ success: true, max_concurrent_bookings: val });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== AVAILABILITY MANAGEMENT =====
 
 // Get customer availability
@@ -2431,9 +2451,12 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(403).json({ success: false, error: 'Kontoen er sperret. Kontakt admin for å oppheve.', locked: true });
   }
 
+  const userAgent = req.headers['user-agent'] || 'unknown';
+
   // Check admin password
   if (password === ADMIN_PASSWORD) {
     _lockoutMap.delete(ip);
+    try { await pool.query('INSERT INTO login_log (ip, success, company_name, is_admin, user_agent) VALUES ($1, true, $2, true, $3)', [ip, 'Administrator', userAgent]); } catch(e) {}
     return res.json({ success: true, companyId: null, companyName: 'Administrator', isAdmin: true });
   }
 
@@ -2442,9 +2465,13 @@ app.post('/api/auth/login', async (req, res) => {
   for (const company of companies) {
     if (company.login_password === password) {
       _lockoutMap.delete(ip);
+      try { await pool.query('INSERT INTO login_log (ip, success, company_name, is_admin, user_agent) VALUES ($1, true, $2, false, $3)', [ip, company.name, userAgent]); } catch(e) {}
       return res.json({ success: true, companyId: company.id, companyName: company.name, isAdmin: false });
     }
   }
+
+  // Wrong password — log failed attempt
+  try { await pool.query('INSERT INTO login_log (ip, success, company_name, is_admin, user_agent) VALUES ($1, false, $2, false, $3)', [ip, 'FEILET', userAgent]); } catch(e) {}
 
   // Wrong password — increment attempts
   state.attempts += 1;

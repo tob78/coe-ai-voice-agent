@@ -3726,7 +3726,7 @@ async function loadCalBookings() {
       const isToday = dateStr === today;
       const dayBookings = byDay[dateStr] || [];
       html += `<div class="cal-day ${isToday?'today':''}" onclick="showCalDay('${dateStr}')">
-        <div style="font-weight:600; font-size:.75rem; color:${isToday?'var(--accent)':'var(--text2)'}; margin-bottom:.25rem;">${d}</div>
+        <div style="font-weight:600; font-size:.75rem; color:${isToday?'var(--accent)':'var(--text2)'}; margin-bottom:.25rem;">${d}${dayBookings.length ? '<span style="display:inline-block;width:6px;height:6px;background:#64748b;border-radius:50%;margin-left:3px;vertical-align:top;"></span>' : ''}</div>
         ${dayBookings.slice(0,3).map(b => {
           const confirmed = b.confirmation_status === 'confirmed';
           const pending = b.confirmation_status === 'pending';
@@ -3808,34 +3808,75 @@ function showCalDay(dateStr) {
   if (!bookings.length) { el.innerHTML = `<div class="stat-card">${emptyState('Ingen bestillinger ' + fmtDate(dateStr))}</div>`; return; }
   const confirmed = bookings.filter(b => b.confirmation_status === 'confirmed').length;
   const pending = bookings.filter(b => b.confirmation_status === 'pending').length;
+  
+  // Group by time slot
+  const byTime = {};
+  bookings.forEach(b => {
+    const t = (b.preferred_time || b.appointment_time || 'Ingen tid').slice(0,5);
+    if (!byTime[t]) byTime[t] = [];
+    byTime[t].push(b);
+  });
+  const sortedTimes = Object.keys(byTime).sort();
+  
   el.innerHTML = `<div class="stat-card"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem; flex-wrap:wrap; gap:.5rem;">
       <h3 style="font-weight:600; color:var(--text2);">${fmtDate(dateStr)} — ${bookings.length} bestilling${bookings.length>1?'er':''}</h3>
       <div style="display:flex; gap:.5rem; align-items:center;">
         ${confirmed?`<span style="font-size:.75rem; background:#22c55e20; color:#22c55e; padding:.25rem .5rem; border-radius:.25rem;">✅ ${confirmed} bekreftet</span>`:''}
         ${pending?`<span style="font-size:.75rem; background:#f59e0b20; color:#f59e0b; padding:.25rem .5rem; border-radius:.25rem;">⏳ ${pending} venter</span>`:''}
-
       </div>
     </div>
-    <div style="display:flex; flex-direction:column; gap:.5rem;">${bookings.map(b => {
-      const isConfirmed = b.confirmation_status === 'confirmed';
-      const isPending = b.confirmation_status === 'pending';
-      const borderColor = isConfirmed ? '#22c55e' : isPending ? '#f59e0b' : 'var(--border)';
-      return `
-      <div style="display:flex; align-items:center; justify-content:space-between; padding:.75rem; border-radius:.5rem; cursor:pointer; border:1px solid ${borderColor}; border-left:3px solid ${borderColor};" onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''" onclick="navigate('#/kunde/${b.id}')">
-        <div>
-          <span style="font-weight:500;">${b.name||'Ukjent'}</span>
-          <span style="font-size:.875rem; color:var(--text3); margin-left:.5rem;">${b.preferred_time||b.appointment_time||''}</span>
-          ${b.service_requested?`<span style="font-size:.75rem; color:var(--text3); margin-left:.5rem;">${b.service_requested}</span>`:''}
+    ${sortedTimes.map(time => `
+      <div style="margin-bottom:1rem;">
+        <div style="font-size:.8rem; font-weight:600; color:var(--accent); margin-bottom:.5rem; padding:.25rem .5rem; background:var(--bg); border-radius:.25rem; display:inline-block;">🕐 ${time}</div>
+        <div style="display:flex; flex-wrap:wrap; gap:.5rem;">
+          ${byTime[time].map(b => {
+            const isConfirmed = b.confirmation_status === 'confirmed';
+            const isPending = b.confirmation_status === 'pending';
+            const borderColor = isConfirmed ? '#22c55e' : isPending ? '#f59e0b' : 'var(--border)';
+            const bubbleId = 'cal-bubble-' + b.id;
+            return `
+          <div style="flex:1; min-width:200px; max-width:350px; border:1px solid ${borderColor}; border-left:3px solid ${borderColor}; border-radius:.5rem; overflow:hidden;">
+            <div style="padding:.6rem .75rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="document.getElementById('${bubbleId}').style.display=document.getElementById('${bubbleId}').style.display==='none'?'block':'none'">
+              <div>
+                <span style="font-weight:600; font-size:.875rem;">${b.name||'Ukjent'}</span>
+                ${b.service_requested?`<div style="font-size:.75rem; color:var(--text3);">${b.service_requested}</div>`:''}
+              </div>
+              <div style="display:flex; align-items:center; gap:.35rem;">
+                ${isConfirmed?'<span style="font-size:.7rem;">✅</span>':''}
+                ${isPending?'<span style="font-size:.7rem;">⏳</span>':''}
+                <span style="font-size:.7rem; color:var(--text3);">▼</span>
+              </div>
+            </div>
+            <div id="${bubbleId}" style="display:none; padding:.5rem .75rem; border-top:1px solid var(--border); background:var(--bg); font-size:.8rem;">
+              ${b.phone?`<div style="margin-bottom:.25rem;">📞 ${b.phone}</div>`:''}
+              ${b.address?`<div style="margin-bottom:.25rem;">📍 ${b.address}</div>`:''}
+              ${b.service_requested?`<div style="margin-bottom:.25rem;">🔧 ${b.service_requested}</div>`:''}
+              ${(b.comment||b.notes)?`<div style="margin-bottom:.25rem;">📝 ${b.comment||b.notes}</div>`:''}
+              ${b.preferred_date?`<div style="margin-bottom:.25rem;">📅 ${b.preferred_date}</div>`:''}
+              <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px solid var(--border);">
+                <label style="font-size:.7rem; color:var(--text3); display:block; margin-bottom:.2rem;">👤 Tildelt ansatt:</label>
+                <input type="text" value="${(b.assigned_to||'').replace(/"/g,'&quot;')}" placeholder="Skriv inn navn..." 
+                  style="width:100%; padding:.35rem .5rem; font-size:.8rem; border:1px solid var(--border); border-radius:.25rem; background:var(--card); color:var(--text1);"
+                  onblur="assignEmployee(${b.id}, this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+              </div>
+              <div style="margin-top:.5rem; display:flex; gap:.35rem; flex-wrap:wrap;">
+                ${isPending?`<button class="btn" style="background:#22c55e; color:white; font-size:.7rem; padding:.2rem .6rem; border-radius:.35rem;" onclick="event.stopPropagation();confirmAppointment(${b.id}, ${b.customer_id||'null'})">✅ Bekreft</button>`:''}
+                <button class="btn btn-secondary" style="font-size:.7rem; padding:.2rem .6rem;" onclick="event.stopPropagation();navigate('#/kunde/${b.id}')">Vis kunde</button>
+              </div>
+            </div>
+          </div>`;
+          }).join('')}
         </div>
-        <div style="display:flex; align-items:center; gap:.5rem;">
-          <span style="font-size:.75rem; padding:.125rem .5rem; border-radius:.25rem; background:${companyColor(b.company_id)}20; color:${companyColor(b.company_id)};">${b.company_name||''}</span>
-          ${statusBadge(b.status)}
-          ${isConfirmed?'<span style="font-size:.7rem; color:#22c55e;">✅</span>':''}
-          ${isPending?`<button class="btn" style="background:#22c55e; color:white; font-size:.75rem; padding:.25rem .75rem; border-radius:.5rem; font-weight:600;" onclick="event.stopPropagation();confirmAppointment(${b.id}, ${b.customer_id||'null'})">✅ Bekreft</button>`:''}
+      </div>
+    `).join('')}
+  </div>`;
+}
 
-        </div>
-      </div>`;
-    }).join('')}</div></div>`;
+async function assignEmployee(bookingId, name) {
+  try {
+    await api('/api/bookings/' + bookingId + '/assign', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ assigned_to: name }) });
+    showToast('👤 Ansatt oppdatert');
+  } catch(e) { showToast('❌ Feil: ' + e.message); }
 }
 
 // ── AI Test Chat ──
@@ -4138,7 +4179,7 @@ function renderSettings() {
       <h3 style="font-weight:600; color:var(--text2); margin-bottom:1rem;">Om systemet</h3>
       <div style="display:flex; flex-direction:column; gap:.75rem; font-size:.875rem;">
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">System</span><span style="font-weight:500;">COE CRM</span></div>
-        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">3.9.63</span></div>
+        <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Versjon</span><span style="font-weight:500;">3.9.74</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Skildring</span><span style="font-weight:500;">AI-driven kundeoppfølgingssystem</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Backend</span><span style="font-weight:500;">Express + PostgreSQL</span></div>
         <div style="display:flex; justify-content:space-between;"><span style="color:var(--text3);">Telefoni</span><span style="font-weight:500;">Twilio Voice AI</span></div>
@@ -4148,15 +4189,24 @@ function renderSettings() {
         <h4 style="font-weight:600; font-size:.875rem; color:var(--text2); margin-bottom:.5rem;">Funksjonar</h4>
         <ul style="font-size:.875rem; color:var(--text3); list-style:none; display:flex; flex-direction:column; gap:.25rem;">
           <li>✅ AI-telefonsamtaler med automatisk bestilling</li>
-          <li>✅ Bransjespesifikke spørsmål</li>
-          <li>✅ SMS-varsler til ansatte</li>
+          <li>✅ Bransjespesifikke spørsmål tilpassa kvar bedrift</li>
+          <li>✅ KI sjekker ledige tider opp mot kalender</li>
+          <li>✅ Opp til 5 kundar per tidsluke — justerbart per antal tilsette</li>
+          <li>✅ Kalendervisning med klikkbare bobler per bestilling</li>
+          <li>✅ Uttrekksinfo frå samtale direkte i kalender (klikkbar)</li>
+          <li>✅ Ansatte kan fordele og merke bestillingar med eige namn</li>
+          <li>✅ Autobekreftelse — SMS med dato/tid/teneste til kunde</li>
+          <li>✅ SMS-varsler til ansatte med uttrekksinformasjon</li>
+          <li>✅ Bekreftelsesmelding til kunde automatisk etter samtale</li>
+          <li>✅ Påminnings-SMS 2 timar før avtale</li>
           <li>✅ Samtaleopptak og avspeling</li>
-          <li>✅ Kalendervisning</li>
-          <li>✅ Omsetningsstatistikk</li>
-          <li>✅ Selskapsinnlogging</li>
-          <li>✅ Telefonnummer-ruting</li>
+          <li>✅ Omsetningsstatistikk og dashboard</li>
+          <li>✅ Selskapsinnlogging med IP-sporing</li>
+          <li>✅ Telefonnummer-ruting per selskap</li>
           <li>✅ AI Test Chat</li>
-          <li>✅ Kundar under selskaper</li>
+          <li>✅ Kundar under selskaper med kjeldefilter</li>
+          <li>✅ Chatbot- og meldingsintegrasjon</li>
+          <li>✅ Dagleg e-postrapport med systemstatus</li>
         </ul>
       </div>
     </div>`;

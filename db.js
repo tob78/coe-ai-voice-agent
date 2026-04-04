@@ -237,6 +237,20 @@ async function initDatabase() {
     'ALTER TABLE messages ADD COLUMN IF NOT EXISTS phone_to TEXT',
     'ALTER TABLE messages ADD COLUMN IF NOT EXISTS call_id INTEGER',
     'ALTER TABLE messages ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP',
+    // v3.9.74 — Multi-booking + employee assignment
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS assigned_to TEXT',
+    'ALTER TABLE customers ADD COLUMN IF NOT EXISTS assigned_to TEXT',
+    'ALTER TABLE companies ADD COLUMN IF NOT EXISTS max_concurrent_bookings INTEGER DEFAULT 5',
+    // v3.9.73 — Login log for IP tracking
+    `CREATE TABLE IF NOT EXISTS login_log (
+      id SERIAL PRIMARY KEY,
+      ip TEXT,
+      success BOOLEAN DEFAULT false,
+      company_name TEXT,
+      is_admin BOOLEAN DEFAULT false,
+      user_agent TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`,
   ];
   for (const sql of migrations) {
     try { await pool.query(sql); } catch(e) { /* column may already exist */ }

@@ -7,17 +7,17 @@ const ADMIN_EMAIL = 'tobiasbjorkhaug@gmail.com';
 const GITHUB_TOKEN_EXPIRY = new Date('2026-06-22');
 const RAILWAY_URL = 'https://backend-production-6779.up.railway.app';
 
-// Gmail SMTP transporter
+// Gmail SMTP transporter — port 465 SSL (587 blokkeres av Railway)
 const emailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  connectionTimeout: 10000,
+  port: 465,
+  secure: true,
+  connectionTimeout: 15000,
   greetingTimeout: 10000,
-  socketTimeout: 15000,
+  socketTimeout: 20000,
   auth: {
     user: ADMIN_EMAIL,
-    pass: (process.env.GMAIL_APP_PASSWORD || 'ytquiherowhgyazv').replace(/\s/g, '')
+    pass: (process.env.GMAIL_APP_PASSWORD || 'ytquiherohwgyazv').replace(/\s/g, '')
   }
 });
 
@@ -213,11 +213,19 @@ async function getChatbotStats() {
 }
 
 async function getSecurityStats() {
-  const stats = { loginSuccess: 0, loginFailed: 0, lockedAccounts: 0 };
+  const stats = { loginSuccess: 0, loginFailed: 0, lockedAccounts: 0, recentLogins: [] };
   try {
     const locked = await pool.query(`SELECT COUNT(*) as c FROM companies WHERE locked_out = true`);
     stats.lockedAccounts = parseInt(locked.rows[0].c);
   } catch (e) { /* */ }
+  try {
+    const success = await pool.query(`SELECT COUNT(*) as c FROM login_log WHERE success = true AND created_at > NOW() - INTERVAL '24 hours'`);
+    stats.loginSuccess = parseInt(success.rows[0].c);
+    const failed = await pool.query(`SELECT COUNT(*) as c FROM login_log WHERE success = false AND created_at > NOW() - INTERVAL '24 hours'`);
+    stats.loginFailed = parseInt(failed.rows[0].c);
+    const recent = await pool.query(`SELECT ip, success, company_name, created_at, user_agent FROM login_log WHERE created_at > NOW() - INTERVAL '24 hours' ORDER BY created_at DESC LIMIT 20`);
+    stats.recentLogins = recent.rows;
+  } catch (e) { /* login_log table may not exist yet */ }
   return stats;
 }
 
@@ -435,9 +443,24 @@ async function buildDailyEmail() {
   <div class="section">
     <h2>🔒 Sikkerhet</h2>
     <table>
+      <tr><td>Vellykkede innlogginger (24t)</td><td>${security.loginSuccess}</td></tr>
+      <tr><td>Feilede innlogginger (24t)</td><td>${security.loginFailed > 0 ? `🔴 ${security.loginFailed}` : '✅ 0'}</td></tr>
       <tr><td>Låste kontoer</td><td>${security.lockedAccounts > 0 ? `🔴 ${security.lockedAccounts}` : '✅ 0'}</td></tr>
       <tr><td>GitHub-token</td><td>${daysToGithub} dager igjen</td></tr>
     </table>
+    ${security.recentLogins.length > 0 ? `
+    <h3 style="margin-top:12px;font-size:14px">Siste innlogginger</h3>
+    <table style="font-size:12px">
+      <tr style="background:#1a2332;font-weight:bold"><td>Tid</td><td>IP</td><td>Status</td><td>Konto</td></tr>
+      ${security.recentLogins.map(l => {
+        const time = new Date(l.created_at).toLocaleTimeString('no-NO', { timeZone: 'Europe/Oslo', hour: '2-digit', minute: '2-digit' });
+        const status = l.success ? '✅' : '🔴 FEILET';
+        const isSuspicious = !l.success || (l.ip && !l.ip.startsWith('10.') && !l.ip.startsWith('192.168.') && !l.ip.startsWith('127.'));
+        const rowColor = !l.success ? 'background:#2a1a1a' : '';
+        return `<tr style="${rowColor}"><td>${time}</td><td>${l.ip || 'ukjent'}</td><td>${status}</td><td>${l.company_name}</td></tr>`;
+      }).join('')}
+    </table>
+    ` : ''}
   </div>
 
   <div class="links">
