@@ -2958,8 +2958,10 @@ VIKTIG: name skal ALDRI være null/tom hvis kunden har sagt navnet sitt!` },
             );
             console.log(`📋 Recovery: Booking opprettet for call ${callId} — ${extractedInfo.service_requested || 'ukjent tjeneste'}`);
           
-          // Auto-confirm: send confirmation SMS with date/time if requires_worker_approval is OFF
-          if (companyResult.rows[0]?.requires_worker_approval === false && callerPhone !== 'ukjent' && extractedInfo.preferred_date) {
+          // Auto-confirm: update status + send confirmation SMS when requires_worker_approval is OFF
+          if (companyResult.rows[0]?.requires_worker_approval === false && callerPhone !== 'ukjent') {
+            // Oppdater kunde-status til Booket
+            await db.query(`UPDATE customers SET status = 'Booket' WHERE id = $1`, [customerId]);
             try {
               const fullComp = (await db.query('SELECT * FROM companies WHERE id = $1', [companyId])).rows[0];
               const custName = extractedInfo.name ? ' ' + extractedInfo.name.split(' ')[0] : '';
