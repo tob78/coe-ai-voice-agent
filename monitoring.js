@@ -581,10 +581,15 @@ function startScheduler() {
     const hour = osloTime.getHours();
     const minute = osloTime.getMinutes();
 
-    // Daily email at 08:00
-    if (hour === 8 && minute === 0) {
-      sendDailyEmail();
-      checkGithubToken();
+    // Daily email at 08:00 — datobasert guard for å unngå miss/dobbelt
+    if (hour === 8 && minute < 10) {
+      const today = osloTime.toDateString();
+      if (lastDailyReport !== today) {
+        lastDailyReport = today;
+        sendDailyEmail();
+        checkGithubToken();
+        console.log('[MONITOR] 📧 Daily email triggered for', today);
+      }
     }
 
     // SMS limit check every hour during business hours

@@ -4121,8 +4121,12 @@ function clearChat() {
 // ── Settings ──
 // ── Auto-rettinger (feil vi fant og fikset automatisk) ──
 async function renderAutoFixes() {
-  app().innerHTML = `<h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1.5rem;">🔧 Auto-rettinger</h2>
-    <p style="color:var(--text2); font-size:.875rem; margin-bottom:1.5rem;">Feil som KI-en fant i samtaler og rettet automatisk. Systemet lærer og forbedrer seg selv etter hver samtale.</p>
+  app().innerHTML = `<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; margin-bottom:.75rem;">
+    <h2 style="font-size:1.5rem; font-weight:700; margin:0;">🔧 Auto-rettinger</h2>
+    ${isAdmin ? `<button class="btn btn-secondary" id="af-run-btn" onclick="runAutoAnalysis()" style="font-size:.85rem; padding:.4rem 1rem;">⚡ Kjør analyse nå</button>` : ''}
+  </div>
+    <p style="color:var(--text2); font-size:.875rem; margin-bottom:1.5rem;">KI-en analyserer hver samtale automatisk og foreslår forbedringer. Kjøres av Railway etter hver fullført samtale.</p>
+    <div id="af-msg" style="display:none; margin-bottom:1rem;"></div>
     <div id="af-filters" style="display:flex; gap:.75rem; margin-bottom:1.5rem; flex-wrap:wrap; align-items:center;">
       <select id="af-company" onchange="renderAutoFixesList()" style="max-width:200px; flex-shrink:0;"><option value="">Alle selskaper</option></select>
       <select id="af-severity" onchange="renderAutoFixesList()" style="max-width:200px; flex-shrink:0;">
@@ -4230,6 +4234,30 @@ async function toggleAutoFix(id, currentlyActive) {
     window._afData = await api('/api/auto-improvements');
     renderAutoFixesList();
   } catch(e) { alert('Feil ved oppdatering'); }
+}
+
+async function runAutoAnalysis() {
+  const btn = $('af-run-btn');
+  const msg = $('af-msg');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyserer...'; }
+  try {
+    const res = await api('/api/auto-improvements/run-analysis', { method: 'POST' });
+    if (msg) {
+      msg.style.display = 'block';
+      if (res.analyzing > 0) {
+        msg.innerHTML = `<div style="background:#f0fdf4; border:1px solid #86efac; border-radius:.5rem; padding:.75rem 1rem; color:#166534; font-size:.875rem;">✅ Analyserer <strong>${res.analyzing} samtaler</strong> i bakgrunnen. Last siden på nytt om litt.</div>`;
+      } else {
+        msg.innerHTML = `<div style="background:#fefce8; border:1px solid #fde047; border-radius:.5rem; padding:.75rem 1rem; color:#854d0e; font-size:.875rem;">ℹ️ ${res.message}</div>`;
+      }
+    }
+  } catch(e) {
+    if (msg) {
+      msg.style.display = 'block';
+      msg.innerHTML = `<div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:.5rem; padding:.75rem 1rem; color:#991b1b; font-size:.875rem;">❌ Feil: ${e.message}</div>`;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Kjør analyse nå'; }
+  }
 }
 
 function renderSettings() {

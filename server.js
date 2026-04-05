@@ -1775,6 +1775,54 @@ app.patch('/api/auto-improvements/:id', async (req, res) => {
   }
 });
 
+// Kjør auto-analyse på alle uanalyserte samtaler (manuell trigger fra CRM)
+app.post('/api/auto-improvements/run-analysis', async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: 'Database not available' });
+
+    // Finn samtaler som er fullført, har transcript, men IKKE er analysert ennå
+    const callsRes = await pool.query(`
+      SELECT c.id, c.company_id, c.transcript, c.call_outcome
+      FROM calls c
+      WHERE c.status = 'completed'
+        AND c.transcript IS NOT NULL
+        AND LENGTH(c.transcript) > 50
+        AND c.id NOT IN (
+          SELECT DISTINCT call_id FROM coe_prompt_improvements WHERE call_id IS NOT NULL
+        )
+      ORDER BY c.created_at DESC
+      LIMIT 20
+    `);
+
+    const calls = callsRes.rows;
+    if (calls.length === 0) {
+      return res.json({ message: 'Ingen uanalyserte samtaler funnet', analyzed: 0 });
+    }
+
+    res.json({ message: `Starter analyse av ${calls.length} samtaler — kjører i bakgrunnen`, analyzing: calls.length });
+
+    // Kjør i bakgrunnen (ikke blokker respons)
+    (async () => {
+      let count = 0;
+      for (const call of calls) {
+        try {
+          const analysis = await analyzer.analyzeSingleCall(call.transcript, 'Ukjent');
+          await autoImproveFromCall(pool, call.id, call.company_id, call.transcript, analysis);
+          count++;
+          console.log(`[AUTO-LEARN] Manuell analyse: ${count}/${calls.length} (samtale ${call.id})`);
+        } catch (err) {
+          console.error(`[AUTO-LEARN] Feil på samtale ${call.id}:`, err.message);
+        }
+        // Vent 1s mellom kall for å spare OpenAI-kvote
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      console.log(`[AUTO-LEARN] Manuell analyse ferdig: ${count} av ${calls.length} analysert`);
+    })();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ===== TRANSKRIPSJON + INFO-UTTREKK ENDEPUNKTER =====
 
 // Manuell transkripsjon av en samtale
