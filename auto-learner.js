@@ -40,11 +40,13 @@ ${existingImprovements.map(e => '- ' + e).join('\n') || 'Ingen ennå'}
 REGLER:
 - Lag KUN forbedringer som er KONKRETE og HANDLINGSRETTEDE
 - Hver forbedring er en kort instruks AI-en kan følge direkte
+- Alltid MINST 1 forbedring — selv om samtalen var god. Finn alltid noe å stramme opp.
 - Maks 3 forbedringer per samtale
 - Skriv på norsk bokmål
 - Fokuser på de viktigste feilene
 - Ikke gjenta forbedringer som allerede er aktive
-- Hvis samtalen var perfekt (score 8+), returner tomt array
+- Typiske ting å alltid vurdere: anti-stopp-presisjon, norsk-flyt, navn-steg, ledige-tider, overføringsskjema
+- ALDRI returner tomt array — alltid minst 1 forbedring
 
 Returner JSON:
 {
@@ -70,15 +72,18 @@ Returner JSON:
 
     const result = JSON.parse(response.choices[0].message.content);
     
+    // Fallback — alltid minst 1 forbedring
     if (!result.improvements || result.improvements.length === 0) {
-      console.log('[AUTO-LEARN] Ingen forbedringer nødvendig for samtale', callId);
-      // Still save a record that analysis was done
-      await pool.query(
-        `INSERT INTO coe_prompt_improvements (call_id, company_id, improvement_type, title, description, old_behavior, new_behavior, severity, overall_note, active)
-         VALUES ($1, $2, 'ingen', 'Ingen forbedringer nødvendig', 'Samtalen var god nok', '', '', 'ingen', $3, false)`,
-        [callId, companyId, result.overall_note || 'Ingen forbedringer trengs']
-      );
-      return result;
+      console.log('[AUTO-LEARN] AI returnerte tomt — bruker anti-stopp fallback for samtale', callId);
+      result.improvements = [{
+        type: 'ny_regel',
+        title: 'Anti-stopp presisering',
+        description: 'Aldri si engelske fraser. Si "Et øyeblikk" — aldri "hold on", "just a sec" eller "one moment".',
+        old_behavior: 'Kan bruke engelske pausefraser',
+        new_behavior: 'Alltid norsk — "Et øyeblikk"',
+        severity: 'viktig'
+      }];
+      result.overall_note = result.overall_note || 'Samtalen var god — anti-stopp-regel lagt til som standard forbedring.';
     }
 
     // Save each improvement to DB
