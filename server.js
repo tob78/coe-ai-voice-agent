@@ -2553,7 +2553,8 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   // Check company passwords
-  const companies = await db.all("SELECT id, name, login_password FROM companies WHERE login_password IS NOT NULL AND login_password != ''");
+  const companiesRes = await pool.query("SELECT id, name, login_password FROM companies WHERE login_password IS NOT NULL AND login_password != ''");
+  const companies = companiesRes.rows;
   for (const company of companies) {
     if (company.login_password === password) {
       _lockoutMap.delete(ip);
