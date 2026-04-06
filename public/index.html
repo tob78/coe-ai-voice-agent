@@ -1925,7 +1925,7 @@ async function deleteCustomer(id) {
 }
 
 // ── New Customer Modal (with availability & services) ──
-function openNewCustomerModal(companyId, industry) {
+async function openNewCustomerModal(companyId, industry) {
   // If no companyId passed, determine from context
   if (!companyId && !isAdmin && currentCompanyId) {
     companyId = currentCompanyId;
