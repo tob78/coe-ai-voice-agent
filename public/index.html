@@ -447,19 +447,10 @@ function isLoggedIn() {
   return s.isAdmin || (s.companyId && s.companyId !== '');
 }
 
-// Lockout handled server-side (2 attempts, permanent lock)
-const _loginState = { locked: false, attempts: 0 };
-
 async function doLogin() {
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('login-error');
   errorEl.style.display = 'none';
-
-  if (_loginState.locked) {
-    errorEl.textContent = 'Kontoen er sperret. Kontakt admin for å oppheve.';
-    errorEl.style.display = '';
-    return;
-  }
 
   if (!password) { errorEl.textContent = 'Skriv inn passord'; errorEl.style.display = ''; return; }
 
@@ -472,14 +463,12 @@ async function doLogin() {
     const data = await resp.json();
 
     if (data.success) {
-      _loginState.locked = false;
       sessionStorage.setItem('coe_is_admin', String(data.isAdmin));
       sessionStorage.setItem('coe_company_id', data.companyId ? String(data.companyId) : '');
       sessionStorage.setItem('coe_company_name', data.companyName || '');
       location.reload();
     } else {
       if (data.locked) {
-        _loginState.locked = true;
         errorEl.textContent = 'Kontoen er sperret etter 2 forsøk. Kontakt admin for å oppheve.';
       } else {
         errorEl.textContent = data.error || 'Feil passord';
