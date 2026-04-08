@@ -537,6 +537,7 @@ async function boot() {
   renderSidebarCompanies();
 
   route();
+  calView = 'month'; calDate = new Date();
   if (!isAdmin && currentCompanyId) {
     document.querySelectorAll('.nav-item').forEach(n => {
       if (n.dataset.route !== '#/kalender') n.style.display = 'none';
@@ -3756,27 +3757,60 @@ async function uncancelCustomer(id) {
 
 // ── Calendar ──
 let calDate = new Date();
+let calView = 'month'; // 'day','week','month','year'
 let calCompany = '';
 async function renderCalendar() {
   if (!isAdmin && currentCompanyId) calCompany = currentCompanyId;
-  const y = calDate.getFullYear(), m = calDate.getMonth();
-  const monthName = calDate.toLocaleString('nb-NO', { month:'long', year:'numeric' });
+
+  // View-labels og navigasjon
+  const viewLabels = { day:'Dag', week:'Uke', month:'Måned', year:'År' };
+  const viewBtns = ['day','week','month','year'].map(v =>
+    `<button onclick="calView='${v}';renderCalendar()" class="btn" style="font-size:.8rem; padding:.4rem .9rem; font-weight:700;
+      background:${calView===v ? 'var(--accent)' : 'var(--bg3)'}; color:${calView===v ? '#fff' : 'var(--text2)'};
+      border:1px solid ${calView===v ? 'var(--accent)' : 'var(--border)'}; border-radius:.5rem;">${viewLabels[v]}</button>`
+  ).join('');
+
+  // Navigasjonstittel og prev/next basert på visning
+  let navTitle = '';
+  let prevFn = '', nextFn = '';
+  const y = calDate.getFullYear(), mo = calDate.getMonth(), d = calDate.getDate();
+  if (calView === 'year') {
+    navTitle = String(y);
+    prevFn = `calDate.setFullYear(calDate.getFullYear()-1);renderCalendar()`;
+    nextFn = `calDate.setFullYear(calDate.getFullYear()+1);renderCalendar()`;
+  } else if (calView === 'month') {
+    navTitle = calDate.toLocaleString('nb-NO', { month:'long', year:'numeric' });
+    prevFn = `calDate.setMonth(calDate.getMonth()-1);renderCalendar()`;
+    nextFn = `calDate.setMonth(calDate.getMonth()+1);renderCalendar()`;
+  } else if (calView === 'week') {
+    // Finn mandag i uken
+    const dow = calDate.getDay();
+    const mon = new Date(calDate); mon.setDate(d - ((dow+6)%7));
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    navTitle = mon.toLocaleDateString('nb-NO',{day:'numeric',month:'short'}) + ' – ' + sun.toLocaleDateString('nb-NO',{day:'numeric',month:'short',year:'numeric'});
+    prevFn = `calDate.setDate(calDate.getDate()-7);renderCalendar()`;
+    nextFn = `calDate.setDate(calDate.getDate()+7);renderCalendar()`;
+  } else if (calView === 'day') {
+    navTitle = calDate.toLocaleDateString('nb-NO',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    prevFn = `calDate.setDate(calDate.getDate()-1);renderCalendar()`;
+    nextFn = `calDate.setDate(calDate.getDate()+1);renderCalendar()`;
+  }
+
   app().innerHTML = `
-    <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:1rem;">Kalender</h2>
-    ${isAdmin ? `<div style="margin-bottom:1rem;"><select id="cal-company" style="max-width:300px;" onchange="calCompany=this.value;loadCalBookings()"><option value="">Alle selskaper</option></select></div>` : ''}
-    <div style="display:flex; align-items:center; justify-content:center; gap:.75rem; margin-bottom:1.5rem; flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="calDate.setMonth(calDate.getMonth()-1);renderCalendar()">◀</button>
-      <span style="font-weight:600; color:var(--text2); min-width:160px; text-align:center; text-transform:capitalize;">${monthName}</span>
-      <button class="btn btn-secondary" onclick="calDate.setMonth(calDate.getMonth()+1);renderCalendar()">▶</button>
-      <button class="btn btn-secondary" style="font-size:.75rem;" onclick="calDate=new Date();renderCalendar()">I dag</button>
-    </div>
-    <div class="stat-card" style="overflow-x:auto;">
-      <div id="cal-header" style="display:grid; grid-template-columns:repeat(7, 1fr); text-align:center; font-size:.75rem; font-weight:600; color:var(--text3); margin-bottom:.25rem;">
-        <div style="padding:.5rem;">Man</div><div style="padding:.5rem;">Tir</div><div style="padding:.5rem;">Ons</div><div style="padding:.5rem;">Tor</div><div style="padding:.5rem;">Fre</div><div style="padding:.5rem;">Lør</div><div style="padding:.5rem;">Søn</div>
+    <h2 style="font-size:1.5rem; font-weight:700; margin-bottom:.75rem;">Kalender</h2>
+    ${isAdmin ? `<div style="margin-bottom:.75rem;"><select id="cal-company" style="max-width:300px;" onchange="calCompany=this.value;loadCalBookings()"><option value="">Alle selskaper</option></select></div>` : ''}
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <div style="display:flex; gap:.4rem;">${viewBtns}</div>
+      <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="${prevFn}">◀</button>
+        <span style="font-weight:600; color:var(--text2); min-width:120px; text-align:center; text-transform:capitalize; font-size:.9rem;">${navTitle}</span>
+        <button class="btn btn-secondary" onclick="${nextFn}">▶</button>
+        <button class="btn btn-secondary" style="font-size:.75rem;" onclick="calDate=new Date();renderCalendar()">I dag</button>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(7, 1fr);" id="cal-grid">${spinner()}</div>
     </div>
-    <div id="cal-day-detail" style="margin-top:1rem;"></div>`;
+    <div id="cal-main-area">${spinner()}</div>
+    ${calView !== 'day' ? '<div id="cal-day-detail" style="margin-top:1rem;"></div>' : ''}`;
+
   if (isAdmin) {
     try {
       const companies = companiesCache.length ? companiesCache : await api('/api/companies');
@@ -3788,53 +3822,196 @@ async function renderCalendar() {
 }
 
 async function loadCalBookings() {
-  const grid = $('cal-grid'); if(!grid) return;
-  grid.innerHTML = spinner();
-  const y = calDate.getFullYear(), m = calDate.getMonth();
-  const start = new Date(y, m, 1).toISOString().split('T')[0];
-  const end = new Date(y, m+1, 0).toISOString().split('T')[0];
+  const area = $('cal-main-area');
+  if (!area) return;
+  area.innerHTML = spinner();
+
+  const y = calDate.getFullYear(), mo = calDate.getMonth(), d = calDate.getDate();
+  const today = new Date().toISOString().split('T')[0];
+  const dayAbbr = ['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
+  const isMobile = window.innerWidth < 768;
+
+  // Determine date range to fetch
+  let start, end;
+  if (calView === 'year') {
+    start = `${y}-01-01`; end = `${y}-12-31`;
+  } else if (calView === 'month') {
+    start = new Date(y, mo, 1).toISOString().split('T')[0];
+    end = new Date(y, mo+1, 0).toISOString().split('T')[0];
+  } else if (calView === 'week') {
+    const dow = calDate.getDay();
+    const mon = new Date(calDate); mon.setDate(d - ((dow+6)%7));
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    start = mon.toISOString().split('T')[0];
+    end = sun.toISOString().split('T')[0];
+  } else {
+    start = end = calDate.toISOString().split('T')[0];
+  }
+
   let params = `?start=${start}&end=${end}`;
   if (calCompany) params += `&company_id=${calCompany}`;
   else if (!isAdmin && currentCompanyId) params += `&company_id=${currentCompanyId}`;
+
+  let bookings = [];
   try {
     const data = await api('/api/bookings' + params);
-    const bookings = data.bookings || data || [];
-    const byDay = {};
-    bookings.forEach(b => {
-      const d = (b.preferred_date||b.appointment_date||'').split('T')[0];
-      if (!byDay[d]) byDay[d] = [];
-      byDay[d].push(b);
-    });
-    const firstDay = new Date(y, m, 1).getDay();
-    const offset = (firstDay + 6) % 7;
-    const daysInMonth = new Date(y, m+1, 0).getDate();
-    const today = new Date().toISOString().split('T')[0];
-    const dayAbbr = ['Søn', 'Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør'];
-    let html = '';
-    for (let i = 0; i < offset; i++) html += '<div class="cal-day cal-empty" style="background:var(--bg);"></div>';
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const isToday = dateStr === today;
-      const dayBookings = byDay[dateStr] || [];
-      html += `<div class="cal-day ${isToday?'today':''}" onclick="showCalDay('${dateStr}')">
-        <div style="font-weight:600; font-size:.75rem; color:${isToday?'var(--accent)':'var(--text2)'}; margin-bottom:.25rem;"><span style="color:var(--text3);font-size:.6rem;">${dayAbbr[new Date(y, m, d).getDay()]}</span> ${d}${dayBookings.length ? '<span style="display:inline-block;width:6px;height:6px;background:#64748b;border-radius:50%;margin-left:3px;vertical-align:top;"></span>' : ''}</div>
-        ${dayBookings.slice(0,3).map(b => {
-          const confirmed = b.confirmation_status === 'confirmed';
-          const pending = b.confirmation_status === 'pending';
-          const pillColor = (b.confirmation_status === 'confirmed' && b.staff_color) ? b.staff_color : 
-                            (b.confirmation_status === 'confirmed' ? '#22c55e' : 
-                            (b.confirmation_status === 'pending' ? '#f59e0b' : '#64748b'));
-          const pillBg = (b.confirmation_status === 'confirmed' && b.staff_color) ? b.staff_color + '33' : '';
-          const pillBorder = `border-left:3px solid ${pillColor};`;
-          const pillIcon = b.confirmation_status === 'confirmed' ? '✅ ' : b.confirmation_status === 'pending' ? '⏳ ' : '';
-          return `<div class="cal-pill" style="background:${pillBg || companyColor(b.company_id)};${pillBorder}">${pillIcon}${(b.preferred_time||b.appointment_time)?((b.preferred_time||b.appointment_time).slice(0,5)+' '):''}${b.name||''}</div>`;
-        }).join('')}
-        ${dayBookings.length>3?`<div style="font-size:.7rem; color:var(--text3); margin-top:.125rem;">+${dayBookings.length-3} til</div>`:''}
+    bookings = data.bookings || data || [];
+  } catch(e) {
+    area.innerHTML = '<p style="color:#f87171; text-align:center; padding:2rem;">Feil ved lasting</p>';
+    return;
+  }
+
+  const byDay = {};
+  bookings.forEach(b => {
+    const ds = (b.preferred_date||b.appointment_date||'').split('T')[0];
+    if (!byDay[ds]) byDay[ds] = [];
+    byDay[ds].push(b);
+  });
+  window._calBookings = byDay;
+
+  // Helper: render a pill
+  function pill(b) {
+    const pillColor = (b.confirmation_status==='confirmed' && b.staff_color) ? b.staff_color :
+      b.confirmation_status==='confirmed' ? '#22c55e' :
+      b.confirmation_status==='pending' ? '#f59e0b' : '#64748b';
+    const pillBg = (b.confirmation_status==='confirmed' && b.staff_color) ? b.staff_color+'33' : '';
+    const pillIcon = b.confirmation_status==='confirmed' ? '✅ ' : b.confirmation_status==='pending' ? '⏳ ' : '';
+    const t = (b.preferred_time||b.appointment_time||'').slice(0,5);
+    return `<div class="cal-pill" style="background:${pillBg||companyColor(b.company_id)};border-left:3px solid ${pillColor};">${pillIcon}${t?t+' ':''}${b.name||''}</div>`;
+  }
+
+  // ── YEAR view ──
+  if (calView === 'year') {
+    const monthNames = ['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'];
+    let html = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem;">`;
+    for (let mi = 0; mi < 12; mi++) {
+      const daysInM = new Date(y, mi+1, 0).getDate();
+      const mStart = `${y}-${String(mi+1).padStart(2,'0')}-01`;
+      const hasBk = Object.keys(byDay).some(ds => ds.startsWith(`${y}-${String(mi+1).padStart(2,'0')}`));
+      html += `<div class="stat-card" style="padding:.75rem; cursor:pointer;" onclick="calView='month';calDate=new Date(${y},${mi},1);renderCalendar()">
+        <div style="font-weight:700; font-size:.95rem; margin-bottom:.5rem; color:${hasBk?'var(--accent)':'var(--text2)'};">${monthNames[mi]} ${y}</div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:1px; font-size:.6rem;">
+          ${['M','T','O','T','F','L','S'].map(x=>`<div style="color:var(--text3);text-align:center;">${x}</div>`).join('')}
+          ${Array((new Date(y,mi,1).getDay()+6)%7).fill('<div></div>').join('')}
+          ${Array.from({length:daysInM},(_,i)=>{
+            const ds=`${y}-${String(mi+1).padStart(2,'0')}-${String(i+1).padStart(2,'0')}`;
+            const cnt=(byDay[ds]||[]).length;
+            const isT=ds===today;
+            return `<div style="text-align:center;width:18px;height:18px;line-height:18px;border-radius:50%;margin:1px auto;font-size:.6rem;background:${isT?'var(--accent)':'transparent'};color:${isT?'#fff':cnt?'var(--text)':'var(--text3)'}; font-weight:${cnt?'700':'400'};" onclick="event.stopPropagation();calView='day';calDate=new Date('${ds}T12:00:00');renderCalendar()">${i+1}</div>`;
+          }).join('')}
+        </div>
+        ${hasBk?`<div style="font-size:.65rem; color:#f59e0b; margin-top:.4rem;">● Bookinger</div>`:''}
       </div>`;
     }
-    grid.innerHTML = html;
+    html += '</div>';
+    area.innerHTML = html;
+    return;
+  }
+
+  // ── WEEK view ──
+  if (calView === 'week') {
+    const dow = calDate.getDay();
+    const mon = new Date(calDate); mon.setDate(d - ((dow+6)%7));
+    const days = Array.from({length:7}, (_,i) => { const dd = new Date(mon); dd.setDate(mon.getDate()+i); return dd; });
+
+    if (isMobile) {
+      // Mobile: vertikal liste
+      let html = '';
+      days.forEach(dd => {
+        const ds = dd.toISOString().split('T')[0];
+        const bks = byDay[ds] || [];
+        const isT = ds === today;
+        html += `<div style="margin-bottom:.75rem;">
+          <div style="font-weight:700; font-size:.9rem; color:${isT?'var(--accent)':'var(--text2)'}; padding:.35rem .5rem; background:var(--bg3); border-radius:.4rem; margin-bottom:.4rem;">
+            ${dd.toLocaleDateString('nb-NO',{weekday:'short',day:'numeric',month:'short'})}${isT?' 🔵':''}
+          </div>
+          ${bks.length ? bks.map(b => pill(b)).join('') : `<div style="font-size:.75rem; color:var(--text3); padding:.25rem .5rem;">Ingen</div>`}
+        </div>`;
+      });
+      area.innerHTML = html || '<p style="color:var(--text3);text-align:center;padding:2rem;">Ingen bookinger denne uken</p>';
+    } else {
+      // Desktop: 7 kolonner
+      let html = `<div class="stat-card" style="overflow-x:auto; padding:.5rem;">
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:.5rem; min-width:700px;">`;
+      days.forEach(dd => {
+        const ds = dd.toISOString().split('T')[0];
+        const bks = byDay[ds] || [];
+        const isT = ds === today;
+        html += `<div style="min-height:160px; background:${isT?'var(--bg3)':'var(--bg)'}; border-radius:.5rem; padding:.5rem; cursor:pointer; border:${isT?'2px solid var(--accent)':'1px solid var(--border)'}" onclick="calView='day';calDate=new Date('${ds}T12:00:00');renderCalendar()">
+          <div style="font-weight:700; font-size:.8rem; color:${isT?'var(--accent)':'var(--text2)'}; margin-bottom:.5rem; text-align:center;">
+            <div style="color:var(--text3);font-size:.65rem;">${dayAbbr[dd.getDay()]}</div>
+            <div style="font-size:1.1rem;">${dd.getDate()}</div>
+          </div>
+          ${bks.map(b => pill(b)).join('')}
+          ${!bks.length?`<div style="font-size:.65rem;color:var(--text3);text-align:center;margin-top:.5rem;">–</div>`:''}
+        </div>`;
+      });
+      html += '</div></div>';
+      area.innerHTML = html;
+    }
+    return;
+  }
+
+  // ── DAY view ──
+  if (calView === 'day') {
+    const ds = calDate.toISOString().split('T')[0];
+    const bks = byDay[ds] || [];
+    area.innerHTML = '<div id="cal-day-detail" style="margin-top:0;"></div>';
     window._calBookings = byDay;
-  } catch(e) { grid.innerHTML = '<p style="color:#f87171; grid-column:span 7; text-align:center; padding:2rem;">Feil ved lasting</p>'; }
+    await showCalDay(ds);
+    return;
+  }
+
+  // ── MONTH view ──
+  if (calView === 'month') {
+    const firstDay = new Date(y, mo, 1).getDay();
+    const offset = (firstDay + 6) % 7;
+    const daysInMonth = new Date(y, mo+1, 0).getDate();
+
+    if (isMobile) {
+      // Mobile: vertikal liste
+      let html = '';
+      for (let dd = 1; dd <= daysInMonth; dd++) {
+        const ds = `${y}-${String(mo+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+        const bks = byDay[ds] || [];
+        const isT = ds === today;
+        const dayName = dayAbbr[new Date(y, mo, dd).getDay()];
+        html += `<div style="display:flex; align-items:flex-start; gap:.5rem; padding:.35rem .25rem; border-bottom:1px solid var(--border);" onclick="calView='day';calDate=new Date('${ds}T12:00:00');renderCalendar()">
+          <div style="min-width:52px; font-size:.8rem; font-weight:${isT?'800':'600'}; color:${isT?'var(--accent)':'var(--text2)'}; padding-top:.1rem;">${dayName} ${dd}</div>
+          <div style="flex:1; display:flex; flex-wrap:wrap; gap:.25rem;">
+            ${bks.length ? bks.map(b => pill(b)).join('') : `<span style="font-size:.7rem; color:var(--text3);">–</span>`}
+          </div>
+        </div>`;
+      }
+      area.innerHTML = `<div class="stat-card" style="padding:.5rem;">${html}</div>`;
+    } else {
+      // Desktop: grid 7 kolonner med store bokser
+      let html = `<div class="stat-card" style="padding:.5rem; overflow-x:auto;">
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); text-align:center; font-size:.75rem; font-weight:600; color:var(--text3); margin-bottom:.25rem;">
+          <div style="padding:.5rem;">Man</div><div style="padding:.5rem;">Tir</div><div style="padding:.5rem;">Ons</div>
+          <div style="padding:.5rem;">Tor</div><div style="padding:.5rem;">Fre</div><div style="padding:.5rem;">Lør</div><div style="padding:.5rem;">Søn</div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:2px;">`;
+
+      for (let i = 0; i < offset; i++) html += '<div style="min-height:120px; background:var(--bg); border-radius:.25rem;"></div>';
+      for (let dd = 1; dd <= daysInMonth; dd++) {
+        const ds = `${y}-${String(mo+1).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+        const isT = ds === today;
+        const bks = byDay[ds] || [];
+        html += `<div class="cal-day ${isT?'today':''}" style="min-height:120px; cursor:pointer; border-radius:.35rem; padding:.4rem; background:${isT?'var(--bg3)':'var(--bg)'}; border:${isT?'2px solid var(--accent)':'1px solid var(--border)'};" onclick="calView='day';calDate=new Date('${ds}T12:00:00');renderCalendar()">
+          <div style="font-weight:700; font-size:.8rem; color:${isT?'var(--accent)':'var(--text2)'}; margin-bottom:.3rem;">
+            <span style="font-size:.6rem; color:var(--text3);">${dayAbbr[new Date(y,mo,dd).getDay()]}</span> ${dd}
+            ${bks.length?`<span style="display:inline-block;width:6px;height:6px;background:#64748b;border-radius:50%;margin-left:3px;vertical-align:top;"></span>`:''}
+          </div>
+          ${bks.slice(0,4).map(b => pill(b)).join('')}
+          ${bks.length>4?`<div style="font-size:.65rem;color:var(--text3);margin-top:.1rem;">+${bks.length-4} til</div>`:''}
+        </div>`;
+      }
+      html += '</div></div>';
+      area.innerHTML = html;
+    }
+    return;
+  }
 }
 
 function copyCalFeed() {
@@ -3929,7 +4106,7 @@ async function showCalDay(dateStr) {
     ${sortedTimes.map(time => `
       <div style="margin-bottom:1.25rem;">
         <div style="font-size:.8rem; font-weight:600; color:var(--accent); margin-bottom:.5rem; padding:.25rem .5rem; background:var(--bg); border-radius:.25rem; display:inline-block;">🕐 ${time}</div>
-        <div style="display:flex; flex-wrap:wrap; gap:.75rem;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:.75rem; max-width:100%;">
           ${byTime[time].map(b => {
             const isConfirmed = b.confirmation_status === 'confirmed';
             const isPending = b.confirmation_status === 'pending';
