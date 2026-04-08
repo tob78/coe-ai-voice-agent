@@ -537,6 +537,11 @@ async function boot() {
   renderSidebarCompanies();
 
   route();
+  if (!isAdmin && currentCompanyId) {
+    document.querySelectorAll('.nav-item').forEach(n => {
+      if (n.dataset.route !== '#/kalender') n.style.display = 'none';
+    });
+  }
 }
 
 boot();
@@ -613,6 +618,25 @@ function workerTitle(industry) {
 function workerTitleCap(industry) {
   const t = workerTitle(industry);
   return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+const STAFF_COLORS = [
+  '#f87171','#fb923c','#fbbf24','#a3e635','#34d399','#22d3ee','#60a5fa','#a78bfa','#f472b6','#e879f9',
+  '#ef4444','#f97316','#eab308','#84cc16','#10b981','#06b6d4','#3b82f6','#8b5cf6','#ec4899','#d946ef',
+  '#dc2626','#ea580c','#ca8a04','#65a30d','#059669','#0891b2','#2563eb','#7c3aed','#db2777','#c026d3',
+  '#b91c1c','#c2410c','#a16207','#4d7c0f','#047857','#0e7490','#1d4ed8','#6d28d9','#be185d','#a21caf',
+  '#fca5a5','#fdba74','#fde047','#86efac','#6ee7b7','#a5f3fc','#93c5fd','#c4b5fd','#f9a8d4','#f0abfc',
+  '#ff6b6b','#ffd166','#06d6a0','#118ab2','#073b4c','#e63946','#457b9d','#1d3557','#2a9d8f','#e9c46a',
+];
+let _staffCache = {}; // companyId -> staff array
+async function getStaff(companyId) {
+  if (!companyId) return [];
+  if (_staffCache[companyId]) return _staffCache[companyId];
+  try {
+    const data = await api('/api/companies/' + companyId + '/staff');
+    _staffCache[companyId] = data;
+    return data;
+  } catch(e) { return []; }
 }
 
 const INDUSTRIES = [
@@ -698,6 +722,12 @@ window.addEventListener('hashchange', route);
 
 function route() {
   if (!isLoggedIn()) return;
+  if (!isAdmin && currentCompanyId) {
+    if (getRoute() !== '#/kalender') {
+      window.location.hash = '#/kalender';
+      return;
+    }
+  }
   const hash = getRoute();
   currentRoute = hash;
   document.querySelectorAll('.nav-item').forEach(n => {
@@ -3791,9 +3821,13 @@ async function loadCalBookings() {
         ${dayBookings.slice(0,3).map(b => {
           const confirmed = b.confirmation_status === 'confirmed';
           const pending = b.confirmation_status === 'pending';
-          const pillBorder = confirmed ? 'border-left:3px solid #22c55e;' : pending ? 'border-left:3px solid #f59e0b;' : '';
-          const pillIcon = confirmed ? '✅ ' : pending ? '⏳ ' : '';
-          return `<div class="cal-pill" style="background:${companyColor(b.company_id)};${pillBorder}">${pillIcon}${(b.preferred_time||b.appointment_time)?((b.preferred_time||b.appointment_time).slice(0,5)+' '):''}${b.name||''}</div>`;
+          const pillColor = (b.confirmation_status === 'confirmed' && b.staff_color) ? b.staff_color : 
+                            (b.confirmation_status === 'confirmed' ? '#22c55e' : 
+                            (b.confirmation_status === 'pending' ? '#f59e0b' : '#64748b'));
+          const pillBg = (b.confirmation_status === 'confirmed' && b.staff_color) ? b.staff_color + '33' : '';
+          const pillBorder = `border-left:3px solid ${pillColor};`;
+          const pillIcon = b.confirmation_status === 'confirmed' ? '✅ ' : b.confirmation_status === 'pending' ? '⏳ ' : '';
+          return `<div class="cal-pill" style="background:${pillBg || companyColor(b.company_id)};${pillBorder}">${pillIcon}${(b.preferred_time||b.appointment_time)?((b.preferred_time||b.appointment_time).slice(0,5)+' '):''}${b.name||''}</div>`;
         }).join('')}
         ${dayBookings.length>3?`<div style="font-size:.7rem; color:var(--text3); margin-top:.125rem;">+${dayBookings.length-3} til</div>`:''}
       </div>`;
@@ -3863,14 +3897,18 @@ function downloadDayIcal(dateStr) {
   a.click();
 }
 
-function showCalDay(dateStr) {
+async function showCalDay(dateStr) {
   const bookings = (window._calBookings || {})[dateStr] || [];
   const el = $('cal-day-detail');
   if (!bookings.length) { el.innerHTML = `<div class="stat-card">${emptyState('Ingen bestillinger ' + fmtDate(dateStr))}</div>`; return; }
+
+  // Determine company for staff lookup
+  const companyId = calCompany || (bookings[0] && bookings[0].company_id) || currentCompanyId;
+  const staff = await getStaff(companyId);
+
   const confirmed = bookings.filter(b => b.confirmation_status === 'confirmed').length;
   const pending = bookings.filter(b => b.confirmation_status === 'pending').length;
   
-  // Group by time slot
   const byTime = {};
   bookings.forEach(b => {
     const t = (b.preferred_time || b.appointment_time || 'Ingen tid').slice(0,5);
@@ -3878,6 +3916,8 @@ function showCalDay(dateStr) {
     byTime[t].push(b);
   });
   const sortedTimes = Object.keys(byTime).sort();
+
+  const staffOptions = staff.map(s => `<option value="${s.name}" data-color="${s.color}">${s.name}</option>`).join('');
   
   el.innerHTML = `<div class="stat-card"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem; flex-wrap:wrap; gap:.5rem;">
       <h3 style="font-weight:600; color:var(--text2);">${fmtDate(dateStr)} — ${bookings.length} bestilling${bookings.length>1?'er':''}</h3>
@@ -3887,43 +3927,71 @@ function showCalDay(dateStr) {
       </div>
     </div>
     ${sortedTimes.map(time => `
-      <div style="margin-bottom:1rem;">
+      <div style="margin-bottom:1.25rem;">
         <div style="font-size:.8rem; font-weight:600; color:var(--accent); margin-bottom:.5rem; padding:.25rem .5rem; background:var(--bg); border-radius:.25rem; display:inline-block;">🕐 ${time}</div>
-        <div style="display:flex; flex-wrap:wrap; gap:.5rem;">
+        <div style="display:flex; flex-wrap:wrap; gap:.75rem;">
           ${byTime[time].map(b => {
             const isConfirmed = b.confirmation_status === 'confirmed';
             const isPending = b.confirmation_status === 'pending';
-            const borderColor = isConfirmed ? '#22c55e' : isPending ? '#f59e0b' : 'var(--border)';
+            const staffColor = b.staff_color || (isConfirmed ? '#22c55e' : isPending ? '#f59e0b' : 'var(--border)');
             const bubbleId = 'cal-bubble-' + b.id;
+            const confirmPanelId = 'cal-confirm-' + b.id;
+            const bgColor = isConfirmed && b.staff_color ? b.staff_color + '22' : 'var(--card)';
+            const borderColor = isConfirmed && b.staff_color ? b.staff_color : isPending ? '#f59e0b' : 'var(--border)';
             return `
-          <div style="flex:1; min-width:200px; max-width:350px; border:1px solid ${borderColor}; border-left:3px solid ${borderColor}; border-radius:.5rem; overflow:hidden;">
-            <div style="padding:.6rem .75rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="document.getElementById('${bubbleId}').style.display=document.getElementById('${bubbleId}').style.display==='none'?'block':'none'">
-              <div>
-                <span style="font-weight:600; font-size:.875rem;">${b.name||'Ukjent'}</span>
-                ${b.service_requested?`<div style="font-size:.75rem; color:var(--text3);">${b.service_requested}</div>`:''}
-              </div>
-              <div style="display:flex; align-items:center; gap:.35rem;">
-                ${isConfirmed?'<span style="font-size:.7rem;">✅</span>':''}
-                ${isPending?'<span style="font-size:.7rem;">⏳</span>':''}
-                <span style="font-size:.7rem; color:var(--text3);">▼</span>
+          <div id="booking-card-${b.id}" style="flex:1; min-width:220px; max-width:380px; border:2px solid ${borderColor}; border-left:5px solid ${staffColor}; border-radius:.75rem; overflow:hidden; background:${bgColor}; transition:all .2s;">
+            <!-- Header — alltid synlig -->
+            <div style="padding:.75rem 1rem; cursor:pointer;" onclick="document.getElementById('${bubbleId}').style.display=document.getElementById('${bubbleId}').style.display==='none'?'block':'none'">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div style="flex:1;">
+                  <div style="font-weight:700; font-size:1rem; color:var(--text1);">${b.name||'Ukjent'}</div>
+                  ${b.service_requested?`<div style="font-size:.8rem; color:var(--text3); margin-top:.1rem;">${b.service_requested}</div>`:''}
+                  ${isConfirmed && b.assigned_to ? `<div style="font-size:.9rem; font-weight:700; color:${b.staff_color||'#22c55e'}; margin-top:.25rem;">👤 ${b.assigned_to}</div>` : ''}
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:.25rem;">
+                  ${isConfirmed ? `<span style="background:${b.staff_color||'#22c55e'}; color:#fff; font-size:.7rem; font-weight:700; padding:.2rem .5rem; border-radius:99px;">✅ Bekreftet</span>` : ''}
+                  ${isPending ? `<span style="background:#f59e0b22; color:#f59e0b; font-size:.7rem; font-weight:700; padding:.2rem .5rem; border-radius:99px;">⏳ Venter</span>` : ''}
+                  <span style="font-size:.65rem; color:var(--text3);">▼ detaljer</span>
+                </div>
               </div>
             </div>
-            <div id="${bubbleId}" style="display:none; padding:.5rem .75rem; border-top:1px solid var(--border); background:var(--bg); font-size:.8rem;">
-              ${b.phone?`<div style="margin-bottom:.25rem;">📞 <a href="tel:${b.phone}" style="color:var(--accent);text-decoration:underline;" onclick="event.stopPropagation()">${b.phone}</a></div>`:''}
-              ${b.address?`<div style="margin-bottom:.25rem;">📍 ${b.address}</div>`:''}
-              ${b.service_requested?`<div style="margin-bottom:.25rem;">🔧 ${b.service_requested}</div>`:''}
-              ${(b.comment||b.notes)?`<div style="margin-bottom:.25rem;">📝 ${b.comment||b.notes}</div>`:''}
-              ${b.preferred_date?`<div style="margin-bottom:.25rem;">📅 ${b.preferred_date}</div>`:''}
-              <div style="margin-top:.5rem; padding-top:.5rem; border-top:1px solid var(--border);">
-                <label style="font-size:.7rem; color:var(--text3); display:block; margin-bottom:.2rem;">👤 Tildelt ansatt:</label>
-                <input type="text" value="${(b.assigned_to||'').replace(/"/g,'&quot;')}" placeholder="Skriv inn navn..." 
-                  style="width:100%; padding:.35rem .5rem; font-size:.8rem; border:1px solid var(--border); border-radius:.25rem; background:var(--card); color:var(--text1);"
-                  onblur="assignEmployee(${b.id}, this.value)" onkeydown="if(event.key==='Enter'){this.blur();}">
+
+            <!-- STOR BEKREFT-KNAPP — kun for pending -->
+            ${isPending ? `
+            <div style="padding:.5rem 1rem; background:#f59e0b15; border-top:1px solid #f59e0b33;">
+              <button onclick="event.stopPropagation(); toggleConfirmPanel('${confirmPanelId}')"
+                style="width:100%; padding:.6rem; background:#f59e0b; color:#000; font-weight:800; font-size:.95rem; border:none; border-radius:.5rem; cursor:pointer; letter-spacing:.02em;">
+                ✅ BEKREFT BESTILLING
+              </button>
+            </div>
+            <!-- Bekreft-panel (skjult til knapp trykkes) -->
+            <div id="${confirmPanelId}" style="display:none; padding:.75rem 1rem; background:#1e293b; border-top:1px solid #334155;">
+              <p style="font-size:.8rem; font-weight:600; color:var(--text2); margin-bottom:.5rem;">Velg ansatt:</p>
+              ${staff.length > 0 ? `
+              <select id="staff-select-${b.id}" style="width:100%; padding:.5rem; border-radius:.5rem; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.875rem; margin-bottom:.5rem;" onchange="updateStaffColor(${b.id}, this)">
+                <option value="">-- Velg ansatt --</option>
+                ${staffOptions}
+              </select>` : ''}
+              <input type="text" id="staff-manual-${b.id}" placeholder="Eller skriv navn manuelt..." 
+                style="width:100%; padding:.5rem; border-radius:.5rem; border:1px solid #475569; background:#0f172a; color:#e2e8f0; font-size:.875rem; margin-bottom:.75rem; box-sizing:border-box;"
+                oninput="if(this.value) document.getElementById('staff-select-${b.id}') && (document.getElementById('staff-select-${b.id}').value='')">
+              <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.5rem;">
+                <div id="staff-color-preview-${b.id}" style="width:24px; height:24px; border-radius:50%; background:#6366f1; border:2px solid #fff; flex-shrink:0;"></div>
+                <span id="staff-color-label-${b.id}" style="font-size:.75rem; color:var(--text3);">Auto-farge tildelt</span>
               </div>
-              <div style="margin-top:.5rem; display:flex; gap:.35rem; flex-wrap:wrap;">
-                ${isPending?`<button class="btn" style="background:#22c55e; color:white; font-size:.7rem; padding:.2rem .6rem; border-radius:.35rem;" onclick="event.stopPropagation();confirmAppointment(${b.id}, ${b.customer_id||'null'})">✅ Bekreft</button>`:''}
-                <button class="btn btn-secondary" style="font-size:.7rem; padding:.2rem .6rem;" onclick="event.stopPropagation();navigate('#/kunde/${b.id}')">Vis kunde</button>
-              </div>
+              <button onclick="event.stopPropagation(); doConfirmBooking(${b.id}, ${b.customer_id||'null'}, '${dateStr}')"
+                style="width:100%; padding:.6rem; background:#22c55e; color:#fff; font-weight:700; font-size:.875rem; border:none; border-radius:.5rem; cursor:pointer;">
+                ✅ Bekreft og lagre
+              </button>
+            </div>
+            ` : ''}
+
+            <!-- Detaljer (kollapsbar) -->
+            <div id="${bubbleId}" style="display:none; padding:.6rem 1rem; border-top:1px solid var(--border); font-size:.8rem;">
+              ${b.phone?`<div style="margin-bottom:.3rem;">📞 <a href="tel:${b.phone}" style="color:var(--accent);text-decoration:underline;">${b.phone}</a></div>`:''}
+              ${b.address?`<div style="margin-bottom:.3rem;">📍 ${b.address}</div>`:''}
+              ${b.service_requested?`<div style="margin-bottom:.3rem;">🔧 ${b.service_requested}</div>`:''}
+              ${(b.comment||b.notes)?`<div style="margin-bottom:.3rem;">📝 ${b.comment||b.notes}</div>`:''}
             </div>
           </div>`;
           }).join('')}
@@ -3933,12 +4001,58 @@ function showCalDay(dateStr) {
   </div>`;
 }
 
-async function assignEmployee(bookingId, name) {
+function toggleConfirmPanel(panelId) {
+  const p = $(panelId);
+  if (!p) return;
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateStaffColor(bookingId, selectEl) {
+  const selected = selectEl.options[selectEl.selectedIndex];
+  const color = selected ? selected.dataset.color : '#6366f1';
+  const preview = $('staff-color-preview-' + bookingId);
+  const label = $('staff-color-label-' + bookingId);
+  const manual = $('staff-manual-' + bookingId);
+  if (preview) preview.style.background = color || '#6366f1';
+  if (label) label.textContent = selected && selected.value ? selected.text : 'Auto-farge tildelt';
+  if (manual && selected && selected.value) manual.value = '';
+}
+
+async function doConfirmBooking(bookingId, customerId, dateStr) {
+  // Get staff name from dropdown or manual input
+  const selectEl = $('staff-select-' + bookingId);
+  const manualEl = $('staff-manual-' + bookingId);
+  let staffName = '';
+  let staffColor = '';
+  
+  if (manualEl && manualEl.value.trim()) {
+    staffName = manualEl.value.trim();
+    // Assign next available color from palette
+    const usedColors = Object.values(_staffCache).flat().map(s => s.color);
+    staffColor = STAFF_COLORS.find(c => !usedColors.includes(c)) || STAFF_COLORS[Math.floor(Math.random() * STAFF_COLORS.length)];
+  } else if (selectEl && selectEl.value) {
+    staffName = selectEl.value;
+    const selected = selectEl.options[selectEl.selectedIndex];
+    staffColor = selected ? selected.dataset.color : '#6366f1';
+  }
+
   try {
-    await api('/api/bookings/' + bookingId + '/assign', { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ assigned_to: name }) });
-    showToast('👤 Ansatt oppdatert');
+    await api('/api/bookings/' + bookingId + '/confirm', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        confirmed_by: staffName || 'CRM',
+        assigned_to: staffName || null,
+        staff_color: staffColor || null
+      })
+    });
+    showToast('✅ Bekreftet!' + (staffName ? ' Tildelt: ' + staffName : ''));
+    // Refresh calendar bookings
+    await loadCalBookings();
+    showCalDay(dateStr);
   } catch(e) { showToast('❌ Feil: ' + e.message); }
 }
+
 
 // ── AI Test Chat ──
 let chatSessionId = null;

@@ -1370,15 +1370,20 @@ app.post('/api/bookings/:id/confirm', async (req, res) => {
     
     await db.run(
       `UPDATE bookings SET confirmation_status = 'confirmed', confirmed_at = NOW(), confirmed_by = $1, 
-       preferred_date = COALESCE($2::text, preferred_date), preferred_time = COALESCE($3::text, preferred_time),
-       status = CASE WHEN status IN ('Ny','Henvendelse') THEN 'Booket' ELSE status END
-       WHERE id = $4`,
-      confirmedBy, confirmedDate, confirmedTime, req.params.id
+ preferred_date = COALESCE($2::text, preferred_date), preferred_time = COALESCE($3::text, preferred_time),
+ status = CASE WHEN status IN ('Ny','Henvendelse') THEN 'Booket' ELSE status END,
+ staff_color = COALESCE($5::text, staff_color),
+ assigned_to = COALESCE($6::text, assigned_to)
+ WHERE id = $4`,
+      confirmedBy, confirmedDate, confirmedTime, req.params.id, req.body.staff_color || null, req.body.assigned_to || null
     );
     
     if (customer) {
       await db.run(`UPDATE customers SET confirmation_status = 'confirmed', confirmed_at = NOW(), confirmed_by = $1,
-        status = CASE WHEN status = 'Ny' THEN 'Booket' ELSE status END WHERE id = $2`, confirmedBy, customer.id);
+        status = CASE WHEN status = 'Ny' THEN 'Booket' ELSE status END,
+        staff_color = COALESCE($3::text, staff_color),
+        assigned_to = COALESCE($4::text, assigned_to)
+        WHERE id = $2`, confirmedBy, customer.id, req.body.staff_color || null, req.body.assigned_to || null);
     }
     
     res.json({ success: true, message: 'Booking bekreftet!' });
@@ -1410,6 +1415,35 @@ app.patch('/api/bookings/:id/assign', async (req, res) => {
   try {
     const { assigned_to } = req.body;
     await db.run('UPDATE customers SET assigned_to = $1 WHERE id = $2', assigned_to || null, req.params.id);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== STAFF MANAGEMENT =====
+// GET staff for a company
+app.get('/api/companies/:id/staff', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM staff WHERE company_id = $1 AND is_active = true ORDER BY name', [req.params.id]);
+    res.json(result.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST add staff member
+app.post('/api/companies/:id/staff', async (req, res) => {
+  try {
+    const { name, color } = req.body;
+    const result = await pool.query(
+      'INSERT INTO staff (company_id, name, color) VALUES ($1, $2, $3) RETURNING *',
+      [req.params.id, name, color || '#6366f1']
+    );
+    res.json(result.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE staff member (soft delete)
+app.delete('/api/staff/:id', async (req, res) => {
+  try {
+    await pool.query('UPDATE staff SET is_active = false WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });

@@ -251,6 +251,17 @@ async function initDatabase() {
       user_agent TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     )`,
+    // v3.9.80 — Staff management per company
+    `CREATE TABLE IF NOT EXISTS staff (
+      id SERIAL PRIMARY KEY,
+      company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+      name VARCHAR(100) NOT NULL,
+      color VARCHAR(20) NOT NULL DEFAULT '#6366f1',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`,
+    'ALTER TABLE bookings ADD COLUMN IF NOT EXISTS staff_color TEXT',
+    'ALTER TABLE customers ADD COLUMN IF NOT EXISTS staff_color TEXT',
   ];
   for (const sql of migrations) {
     try { await pool.query(sql); } catch(e) { /* column may already exist */ }
@@ -274,6 +285,22 @@ async function initDatabase() {
     );
     console.log('✅ Seed: Tom Bjørkhaugs Samlekrok oppretta med passord');
   }
+
+  // Seed Miocat staff (company_id=4) if not already seeded
+  try {
+    const staffCheck = await pool.query('SELECT COUNT(*) as count FROM staff WHERE company_id = 4');
+    if (parseInt(staffCheck.rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO staff (company_id, name, color, is_active) VALUES
+        (4, 'Ann-Louise', '#f87171', true),
+        (4, 'Anne', '#60a5fa', true),
+        (4, 'Beathe', '#fbbf24', true),
+        (4, 'Janne', '#a3e635', true),
+        (4, 'Mio Cathrine', '#34d399', true)
+      `);
+      console.log('✅ Seed: Miocat staff oppretta');
+    }
+  } catch(e) { console.log('⚠️ Staff seed skipped (table may not exist yet):', e.message); }
 
   console.log('✅ PostgreSQL database fully initialized!');
 }
